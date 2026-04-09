@@ -1,0 +1,37 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+
+# build artifacts
+bin/
+dist/
+build/
+coverage/
+*.log
+
+# local binaries / databases
+backend/backend
+backend/mealvote.db
+
+# environment files
+.env
+.env.foundry
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.deployment
+apps/web/.env.deployment
+backend/.env.deployment
+
+# editor / os
+.DS_Store
+.idea/
+.vscode/
+
+# misc
+tmp/
+*.pid

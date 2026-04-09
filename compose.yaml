@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: mealvote-postgres
+    environment:
+      POSTGRES_DB: mealvote
+      POSTGRES_USER: mealvote
+      POSTGRES_PASSWORD: mealvote
+    ports:
+      - "5432:5432"
+    volumes:
+      - mealvote-postgres:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    container_name: mealvote-backend
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./backend/.env.deployment
+    environment:
+      - HTTP_ADDR=:8080
+      - DATABASE_URL=postgres://mealvote:mealvote@postgres:5432/mealvote?sslmode=disable
+      - DB_AUTOMIGRATE=true
+      - RATE_LIMIT_LOGIN_MAX=0
+      - RATE_LIMIT_REGISTER_MAX=0
+      - CHAIN_ID=11155111
+      - GOVERNANCE_CONTRACT_ADDRESS=0x4886a3B56f0a5AcC37339431F80d92c4be6bA536
+      - ORDER_ESCROW_CONTRACT_ADDRESS=0x02Bd0753ac3553dFD81FE253B50eb8eFA59fFDa0
+      - ORDER_CONTRACT_ADDRESS=0x02Bd0753ac3553dFD81FE253B50eb8eFA59fFDa0
+      - PLATFORM_TREASURY_ADDRESS=0x4A996A04cDF63dAbda75A0aeaA12ca837E00e1ec
+      - MEMBERSHIP_TOKEN_ADDRESS=0x0000000000000000000000000000000000000000
+    depends_on:
+      - postgres
+
+  frontend:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.dev
+    container_name: mealvote-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NEXT_PUBLIC_API_BASE=http://localhost:8080
+    depends_on:
+      - backend
+
+volumes:
+  mealvote-postgres:
