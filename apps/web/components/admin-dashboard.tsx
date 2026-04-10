@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { fetchAdminDashboard, fetchMe, passwordLogin, setStoredToken, type AdminDashboard as AdminDashboardData, type Member } from "@/lib/api";
+import { formatWeiAsTwdEth } from "@/lib/currency";
 
 const statCards = [
   { key: "memberCount", label: "會員數", href: "/admin/metrics?view=members", icon: Users },
@@ -126,9 +127,9 @@ export function AdminDashboard() {
         </p>
         {governanceParams ? (
           <div className="mt-5 grid gap-3 md:grid-cols-3">
-            <SummaryStat label="建立訂單費" value={`${formatWeiToEth(governanceParams.createFeeWei)} ETH`} />
-            <SummaryStat label="提案費" value={`${formatWeiToEth(governanceParams.proposalFeeWei)} ETH`} />
-            <SummaryStat label="投票費" value={`${formatWeiToEth(governanceParams.voteFeeWei)} ETH / 票`} />
+            <SummaryStat label="建立訂單費" value={formatWeiAsTwdEth(governanceParams.createFeeWei)} />
+            <SummaryStat label="提案費" value={formatWeiAsTwdEth(governanceParams.proposalFeeWei)} />
+            <SummaryStat label="投票費" value={`${formatWeiAsTwdEth(governanceParams.voteFeeWei)} / 票`} />
           </div>
         ) : null}
       </section>
@@ -165,14 +166,6 @@ export function AdminDashboard() {
       {message ? <p className="text-sm text-[hsl(7_65%_42%)]">{message}</p> : null}
     </div>
   );
-}
-
-function formatWeiToEth(value: number) {
-  const amount = BigInt(value || 0);
-  const integer = amount / 10n ** 18n;
-  const fraction = amount % 10n ** 18n;
-  const fractionText = fraction.toString().padStart(18, "0").slice(0, 4).replace(/0+$/, "");
-  return `${integer.toString()}${fractionText ? `.${fractionText}` : ""}`;
 }
 
 function SummaryStat({ label, value }: { label: string; value: string }) {

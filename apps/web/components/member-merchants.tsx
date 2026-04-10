@@ -84,7 +84,7 @@ export function MemberMerchants() {
               </div>
 
               <p className="mt-4 text-sm leading-7 text-muted-foreground">{merchant.description || "尚未填寫店家介紹"}</p>
-              <p className="mt-4 text-sm text-muted-foreground">{merchant.reviewCount || 0} 則原始評論</p>
+              <p className="mt-4 text-sm text-muted-foreground">{merchant.reviewCount || 0} 則評論</p>
             </Link>
           );
         })}

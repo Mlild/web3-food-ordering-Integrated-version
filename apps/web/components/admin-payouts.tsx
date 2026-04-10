@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cancelAdminOrderPayout, fetchAdminDashboard, syncAdminOrdersPaid, updateGovernanceParams, updatePlatformTreasury, type AdminDashboard } from "@/lib/api";
 import { ensureSepoliaClients, sendNativePayment, toFriendlyWalletError } from "@/lib/chain";
+import { formatWeiAsTwdEth } from "@/lib/currency";
 import { connectWallet } from "@/lib/wallet-auth";
 
 export function AdminPayouts() {
@@ -23,6 +24,7 @@ export function AdminPayouts() {
       title: string;
       createdBy: number;
       createdByName: string;
+      memberName: string;
       merchantName: string;
       merchantPayoutAddress: string;
       amountWei: bigint;
@@ -48,6 +50,7 @@ export function AdminPayouts() {
         title: order.title || `訂單 #${order.proposalId}`,
         createdBy: order.createdBy,
         createdByName: order.createdByName || "",
+        memberName: order.memberName || "",
         merchantName: order.merchantName,
         merchantPayoutAddress: order.merchantPayoutAddress,
         amountWei,
@@ -300,14 +303,14 @@ export function AdminPayouts() {
                     納入批次手動撥款
                   </label>
                   <p className="font-bold">{order.title} / {order.merchantName}</p>
-                  <p className="mt-2 text-sm text-muted-foreground">訂單建立者：{safeTrim(order.createdByName) || "未知"}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">訂單建立者：{safeTrim(order.createdByName) || safeTrim(order.memberName) || "未知"}</p>
                   <p className="mt-2 text-sm text-muted-foreground">{order.memberCount} 位成員 • {formatLocalDateTime(order.createdAt)}</p>
                   {order.confirmedAt ? <p className="mt-2 text-sm text-muted-foreground">會員確認時間：{formatLocalDateTime(order.confirmedAt)}</p> : null}
                   {order.autoPayoutAt ? <p className="mt-2 text-sm text-[hsl(25_85%_36%)]">自動撥款時間：{formatLocalDateTime(order.autoPayoutAt)}</p> : null}
                   <p className="mt-2 break-all text-sm text-muted-foreground">店家收款錢包：{order.merchantPayoutAddress}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-semibold">{formatWeiToEth(order.amountWei.toString())} ETH</p>
+                  <p className="font-semibold">{formatWeiAsTwdEth(order.amountWei.toString())}</p>
                   <p className="mt-1 text-sm text-muted-foreground">待撥款</p>
                 </div>
               </div>
@@ -327,14 +330,6 @@ export function AdminPayouts() {
       {message ? <p className="text-sm text-[hsl(7_65%_42%)]">{message}</p> : null}
     </div>
   );
-}
-
-function formatWeiToEth(value: string | number | bigint) {
-  const amount = BigInt(value || 0);
-  const integer = amount / 10n ** 18n;
-  const fraction = amount % 10n ** 18n;
-  const fractionText = fraction.toString().padStart(18, "0").slice(0, 4).replace(/0+$/, "");
-  return `${integer.toString()}${fractionText ? `.${fractionText}` : ""}`;
 }
 
 function safeTrim(value?: string | null) {

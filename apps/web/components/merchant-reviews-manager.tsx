@@ -39,7 +39,7 @@ export function MerchantReviewsManager() {
         <h1 className="text-3xl font-extrabold">{detail.merchant.name} / 評分與留言</h1>
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           <Stat label="平均星等" value={`${(detail.merchant.averageRating || 0).toFixed(1)} / 5`} />
-          <Stat label="留言總數" value={`${detail.merchant.reviewCount || 0} 則`} />
+          <Stat label="留言總數" value={`${detail.reviews.length} 則`} />
           <Stat label="最新留言時間" value={detail.reviews[0] ? new Date(detail.reviews[0].createdAt).toLocaleString("zh-TW") : "尚無留言"} />
         </div>
       </section>

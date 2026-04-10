@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { fetchRegistrationInviteUsage, fetchUsage, type RegistrationInviteUsage, type UsageRecord } from "@/lib/api";
+import { formatWeiAsTwdEth } from "@/lib/currency";
 
 type LedgerTab = "usage" | "proposal-coupon" | "vote-coupon" | "create-order-coupon" | "invite";
 
@@ -185,29 +186,6 @@ function formatAmount(item: UsageRecord) {
   return `${prefix}${item.amount} ${formatAssetLabel(item.assetType)}`;
 }
 
-const APPROX_TWD_PER_ETH = 120000n;
-const WEI_PER_ETH = 1000000000000000000n;
-const LEDGER_ETH_DECIMALS = 8n;
-const LEDGER_ETH_SCALE = 10n ** LEDGER_ETH_DECIMALS;
-
 function formatWeiLedgerFriendly(value: string) {
-  const wei = parseWei(value);
-  if (wei <= 0n) {
-    return "0.00000000 ETH / NT$0";
-  }
-
-  const scaledEth = (wei * LEDGER_ETH_SCALE) / WEI_PER_ETH;
-  const whole = scaledEth / LEDGER_ETH_SCALE;
-  const fraction = (scaledEth % LEDGER_ETH_SCALE).toString().padStart(Number(LEDGER_ETH_DECIMALS), "0");
-  const twd = Number((wei * APPROX_TWD_PER_ETH) / WEI_PER_ETH).toLocaleString("zh-TW");
-
-  return `${whole.toString()}.${fraction} ETH / NT$${twd}`;
-}
-
-function parseWei(value: string) {
-  try {
-    return BigInt(value || "0");
-  } catch {
-    return 0n;
-  }
+  return formatWeiAsTwdEth(value, 8);
 }

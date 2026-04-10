@@ -3,13 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { fetchMerchantDashboard, type MerchantDashboard as MerchantDashboardData } from "@/lib/api";
-
-function formatWei(value: bigint) {
-  const integer = value / 10n ** 18n;
-  const fraction = value % 10n ** 18n;
-  const fractionText = fraction.toString().padStart(18, "0").slice(0, 4).replace(/0+$/, "");
-  return `${integer.toString()}${fractionText ? `.${fractionText}` : ""} ETH`;
-}
+import { formatWeiAsTwdEth } from "@/lib/currency";
 
 export function MerchantAnalyticsOverview() {
   const [dashboard, setDashboard] = useState<MerchantDashboardData | null>(null);
@@ -61,10 +55,10 @@ export function MerchantAnalyticsOverview() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="近 7 天營收" value={formatWei(stats.sevenDayRevenue)} meta={`${stats.sevenDayCount} 筆已撥款訂單`} />
-        <StatCard label="近 30 天營收" value={formatWei(stats.thirtyDayRevenue)} meta={`${stats.thirtyDayCount} 筆已撥款訂單`} />
-        <StatCard label="近 90 天營收" value={formatWei(stats.ninetyDayRevenue)} meta={`${stats.ninetyDayCount} 筆已撥款訂單`} />
-        <StatCard label="累積營收" value={formatWei(stats.allRevenue)} meta={`${stats.allCount} 筆已撥款訂單`} />
+        <StatCard label="近 7 天營收" value={formatWeiAsTwdEth(stats.sevenDayRevenue)} meta={`${stats.sevenDayCount} 筆已撥款訂單`} />
+        <StatCard label="近 30 天營收" value={formatWeiAsTwdEth(stats.thirtyDayRevenue)} meta={`${stats.thirtyDayCount} 筆已撥款訂單`} />
+        <StatCard label="近 90 天營收" value={formatWeiAsTwdEth(stats.ninetyDayRevenue)} meta={`${stats.ninetyDayCount} 筆已撥款訂單`} />
+        <StatCard label="累積營收" value={formatWeiAsTwdEth(stats.allRevenue)} meta={`${stats.allCount} 筆已撥款訂單`} />
       </div>
 
       {message ? <p className="text-sm text-[hsl(7_65%_42%)]">{message}</p> : null}

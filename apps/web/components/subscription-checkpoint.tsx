@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { fetchContractInfo, fetchMe, fetchPublicGovernanceParams, getStoredToken, registerPendingTransaction, syncSubscription, type ContractInfo, type GovernanceParams, type Member } from "@/lib/api";
 import { isUsableContractAddress, sendNativePayment, toFriendlyWalletError } from "@/lib/chain";
+import { formatWeiAsTwdEth } from "@/lib/currency";
 
 const SUBSCRIPTION_SYNC_KEY = "member-subscription-pending-sync";
 
@@ -126,12 +127,12 @@ export function SubscriptionCheckpoint() {
           <div className="meal-section-heading">
             <p className="meal-kicker">Subscription checkpoint</p>
             <h1>尚未訂閱成為會員。</h1>
-            <p>{governanceParams ? `${formatWeiToEth(governanceParams.subscriptionFeeWei)} ETH / ${governanceParams.subscriptionDurationDays} 天。` : "鏈上月訂閱。"}</p>
+            <p>{governanceParams ? `${formatWeiAsTwdEth(governanceParams.subscriptionFeeWei)} / ${governanceParams.subscriptionDurationDays} 天。` : "鏈上月訂閱。"}</p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
             <AccessStat label="會員" value={member?.displayName || "—"} />
-            <AccessStat label="訂閱費用" value={governanceParams ? `${formatWeiToEth(governanceParams.subscriptionFeeWei)} ETH` : "鏈上月訂閱"} />
+            <AccessStat label="訂閱費用" value={governanceParams ? formatWeiAsTwdEth(governanceParams.subscriptionFeeWei) : "鏈上月訂閱"} />
             <AccessStat label="有效期間" value={governanceParams ? `${governanceParams.subscriptionDurationDays} 天` : "30 天"} />
           </div>
 
@@ -166,14 +167,6 @@ export function SubscriptionCheckpoint() {
       </div>
     </section>
   );
-}
-
-function formatWeiToEth(value: number) {
-  const amount = BigInt(value || 0);
-  const integer = amount / 10n ** 18n;
-  const fraction = amount % 10n ** 18n;
-  const fractionText = fraction.toString().padStart(18, "0").slice(0, 4).replace(/0+$/, "");
-  return `${integer.toString()}${fractionText ? `.${fractionText}` : ""}`;
 }
 
 function AccessStat({ label, value }: { label: string; value: string }) {

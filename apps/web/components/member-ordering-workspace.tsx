@@ -40,6 +40,7 @@ import {
   sendNativePayment,
   toFriendlyWalletError,
 } from "@/lib/chain";
+import { formatWeiAsTwdEth } from "@/lib/currency";
 import { OrderSummaryCard } from "@/components/member-order-shared";
 
 type Stage = "create" | "proposal" | "voting" | "ordering" | "submitted";
@@ -63,7 +64,6 @@ type WorkspaceState = {
   governanceParams: GovernanceParams | null;
 };
 
-const APPROX_TWD_PER_ETH = 120000;
 const defaultCreateDraft: CreateDraft = {
   groupId: "",
   title: "",
@@ -1250,7 +1250,7 @@ function StageDetail(props: {
             <div className="mt-6 grid gap-3 md:grid-cols-4">
               <Stat label="訂單建立者" value={proposalCreatorName(proposal)} />
               <Stat label="參與點餐人數" value={`${aggregateOrder.memberCount} 人`} />
-              <Stat label="總金額" value={formatEth(aggregateOrder.amountWei)} />
+              <Stat label="總金額" value={formatWeiAsTwdEth(aggregateOrder.amountWei)} />
               <Stat label="整筆狀態" value={formatAggregateOrderStatus(aggregateOrder.status)} />
               <Stat label="整體確認接收" value={aggregateOrder.status === "platform_paid" ? "已確認" : canCreatorConfirmReceipt(proposal, props.member) ? "待建立者確認" : aggregateOrder.status === "ready_for_payout" ? "已確認" : "未確認"} />
             </div>
@@ -1638,25 +1638,8 @@ function formatAggregateOrderStatus(status: string) {
   }
 }
 
-function weiToEthNumber(value: string | number | bigint) {
-  const raw = typeof value === "bigint" ? Number(value) : typeof value === "number" ? value : Number(value || 0);
-  if (!Number.isFinite(raw) || raw <= 0) return 0;
-  return raw / 1e18;
-}
-
-function formatEth(value: string | number | bigint) {
-  const eth = weiToEthNumber(value);
-  if (eth === 0) return "0 ETH";
-  return `${eth.toFixed(4)} ETH`;
-}
-
-function formatApproxTWD(value: string | number | bigint) {
-  const amount = Math.round(weiToEthNumber(value) * APPROX_TWD_PER_ETH);
-  return `約 NT$${amount.toLocaleString("zh-TW")}`;
-}
-
 function formatWeiFriendly(value: string | number | bigint) {
-  return `${formatEth(value)} / ${formatApproxTWD(value)}`;
+  return formatWeiAsTwdEth(value);
 }
 
 function durationOptions(options: number[] | undefined, fallback: number) {

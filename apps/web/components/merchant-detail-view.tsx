@@ -6,14 +6,11 @@ import { Button } from "@/components/ui/button";
 import {
   DEMO_REVIEW_CATEGORIES,
   addDemoComment,
-  addDemoMenuRecord,
   getCurrentMemberTitle,
-  getMerchantBuildingInfo,
-  getMerchantComments,
-  getMerchantMenuRecords,
-  mergeMerchantReviews
+  getMerchantBuildingInfo
 } from "@/lib/achievement-demo";
-import { fetchMe, fetchMerchantDetail, type Member, type MerchantDetail } from "@/lib/api";
+import { createMerchantReview, fetchMe, fetchMerchantDetail, type Member, type MerchantDetail } from "@/lib/api";
+import { formatWeiAsTwdEth } from "@/lib/currency";
 
 function renderStars(rating: number) {
   const rounded = Math.round(rating);
@@ -29,10 +26,6 @@ export function MerchantDetailView({ merchantId }: { merchantId: string }) {
   const [rating, setRating] = useState("5");
   const [category, setCategory] = useState<(typeof DEMO_REVIEW_CATEGORIES)[number]>("餐點");
   const [comment, setComment] = useState("");
-  const [menuName, setMenuName] = useState("");
-  const [menuPrice, setMenuPrice] = useState("");
-  const [menuDescription, setMenuDescription] = useState("");
-  const [refreshKey, setRefreshKey] = useState(0);
 
   async function refresh() {
     const [merchantDetail, currentMember] = await Promise.all([fetchMerchantDetail(merchantId), fetchMe()]);
@@ -46,21 +39,19 @@ export function MerchantDetailView({ merchantId }: { merchantId: string }) {
       .finally(() => setLoading(false));
   }, [merchantId]);
 
-  const demoComments = useMemo(() => getMerchantComments(merchantId), [merchantId, refreshKey]);
-  const demoMenus = useMemo(() => getMerchantMenuRecords(merchantId), [merchantId, refreshKey]);
-  const mergedReviews = useMemo(
-    () => mergeMerchantReviews(detail?.reviews || [], demoComments),
-    [detail?.reviews, demoComments]
-  );
   const building = useMemo(
-    () => (detail ? getMerchantBuildingInfo(detail.merchant, mergedReviews) : null),
-    [detail, mergedReviews]
+    () => (detail ? getMerchantBuildingInfo(detail.merchant, detail.reviews) : null),
+    [detail]
   );
 
   async function handleReviewSubmit() {
     if (!member || !comment.trim()) return;
     setPending(true);
     try {
+      await createMerchantReview(merchantId, {
+        rating: Number(rating),
+        comment: `【${category}】${comment.trim()}`
+      });
       addDemoComment({
         merchantId,
         memberId: member.id,
@@ -69,31 +60,14 @@ export function MerchantDetailView({ merchantId }: { merchantId: string }) {
         rating: Number(rating),
         content: comment.trim()
       });
+      await refresh();
       setComment("");
-      setRefreshKey((value) => value + 1);
-      setMessage("已新增測試版個人評論，並同步累積個人勳章積分。");
+      setMessage("評論已送出，店家星等與留言數已同步更新。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "新增評論失敗。");
     } finally {
       setPending(false);
     }
-  }
-
-  function handleMenuSubmit() {
-    if (!member || !menuName.trim() || !menuPrice.trim()) return;
-    addDemoMenuRecord({
-      merchantId,
-      name: menuName.trim(),
-      price: Number(menuPrice),
-      description: menuDescription.trim(),
-      createdByMemberId: member.id,
-      createdByName: member.displayName
-    });
-    setMenuName("");
-    setMenuPrice("");
-    setMenuDescription("");
-    setRefreshKey((value) => value + 1);
-    setMessage("已新增測試版菜單項目。");
   }
 
   if (loading) return <div className="rounded-[1.5rem] border border-border bg-card p-8">讀取店家資訊中...</div>;
@@ -108,7 +82,7 @@ export function MerchantDetailView({ merchantId }: { merchantId: string }) {
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           <Stat label="地址" value={detail.merchant.address || "尚未填寫"} />
           <Stat label="平均星等" value={`${(detail.merchant.averageRating || 0).toFixed(1)} / 5`} />
-          <Stat label="評論總數" value={`${mergedReviews.length} 則`} />
+          <Stat label="評論總數" value={`${detail.reviews.length} 則`} />
         </div>
       </section>
 
@@ -187,35 +161,18 @@ export function MerchantDetailView({ merchantId }: { merchantId: string }) {
           </Button>
 
           <div className="mt-8">
-            <p className="meal-kicker">Menu demo</p>
-            <h3 className="text-xl font-bold">新增菜單</h3>
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
-              <input className="meal-field" value={menuName} onChange={(event) => setMenuName(event.target.value)} placeholder="菜單名稱" />
-              <input className="meal-field" value={menuPrice} onChange={(event) => setMenuPrice(event.target.value)} placeholder="價格" />
-              <input className="meal-field" value={menuDescription} onChange={(event) => setMenuDescription(event.target.value)} placeholder="菜單描述" />
-            </div>
-            <Button variant="secondary" className="mt-4" onClick={handleMenuSubmit} disabled={!menuName.trim() || !menuPrice.trim()}>
-              新增菜單
-            </Button>
-
+            <p className="meal-kicker">Menu</p>
+            <h3 className="text-xl font-bold">店家菜單</h3>
             <div className="mt-4 space-y-3">
-              {[...demoMenus, ...detail.merchant.menu.map((item) => ({
-                id: item.id,
-                merchantId,
-                name: item.name,
-                price: Number(item.priceWei || 0),
-                description: item.description,
-                createdByMemberId: 0,
-                createdByName: "店家原始菜單",
-                createdAt: new Date().toISOString()
-              }))].map((item) => (
+              {detail.merchant.menu.length === 0 ? <p className="text-sm text-muted-foreground">目前還沒有上架菜單。</p> : null}
+              {detail.merchant.menu.map((item) => (
                 <div key={item.id} className="rounded-[1.1rem] border border-border bg-background/70 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-bold">{item.name}</p>
                       <p className="mt-1 text-sm text-muted-foreground">{item.description || "尚未填寫描述"}</p>
                     </div>
-                    <p className="text-sm font-semibold text-primary">${item.price}</p>
+                    <p className="text-sm font-semibold text-primary">{formatWeiAsTwdEth(item.priceWei)}</p>
                   </div>
                 </div>
               ))}
@@ -226,9 +183,9 @@ export function MerchantDetailView({ merchantId }: { merchantId: string }) {
         <div className="meal-panel p-8">
           <p className="meal-kicker">Reviews</p>
           <h2 className="text-2xl font-extrabold">會員評論紀錄</h2>
-          <div className="mt-6 space-y-3">
-            {mergedReviews.length === 0 ? <p className="text-sm text-muted-foreground">目前還沒有任何評論。</p> : null}
-            {mergedReviews.map((review) => {
+        <div className="mt-6 space-y-3">
+            {detail.reviews.length === 0 ? <p className="text-sm text-muted-foreground">目前還沒有任何評論。</p> : null}
+            {detail.reviews.map((review) => {
               const title = review.memberId ? getCurrentMemberTitle(review.memberId) : "";
               return (
                 <div key={`${review.id}-${review.createdAt}`} className="rounded-[1.2rem] border border-border bg-background/70 p-4">
@@ -239,7 +196,7 @@ export function MerchantDetailView({ merchantId }: { merchantId: string }) {
                     </div>
                     <p className="text-sm text-muted-foreground">{renderStars(review.rating)} ({review.rating}/5)</p>
                   </div>
-                  <p className="mt-3 text-sm leading-7 text-muted-foreground">{review.comment}</p>
+                  <p className="mt-3 text-sm leading-7 text-muted-foreground">{review.comment.replace(/^【[^】]+】/, "")}</p>
                   <p className="mt-3 text-xs text-muted-foreground">{new Date(review.createdAt).toLocaleString("zh-TW")}</p>
                 </div>
               );
