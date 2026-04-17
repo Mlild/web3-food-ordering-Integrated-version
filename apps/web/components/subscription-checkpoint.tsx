@@ -4,9 +4,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { fetchContractInfo, fetchMe, fetchPublicGovernanceParams, getStoredToken, registerPendingTransaction, syncSubscription, type ContractInfo, type GovernanceParams, type Member } from "@/lib/api";
+import { clearStoredToken, fetchContractInfo, fetchMe, fetchPublicGovernanceParams, getStoredToken, registerPendingTransaction, syncSubscription, type ContractInfo, type GovernanceParams, type Member } from "@/lib/api";
 import { isUsableContractAddress, sendNativePayment, toFriendlyWalletError } from "@/lib/chain";
 import { formatWeiAsTwdEth } from "@/lib/currency";
+import { clearWalletConnection } from "@/lib/wallet-auth";
 
 const SUBSCRIPTION_SYNC_KEY = "member-subscription-pending-sync";
 
@@ -32,6 +33,14 @@ function redirectToMemberHome() {
   }
 }
 
+function leaveToLogin() {
+  clearStoredToken();
+  clearWalletConnection();
+  if (typeof window !== "undefined") {
+    window.location.assign("/login");
+  }
+}
+
 export function SubscriptionCheckpoint() {
   const router = useRouter();
   const [member, setMember] = useState<Member | null>(null);
@@ -43,7 +52,7 @@ export function SubscriptionCheckpoint() {
 
   useEffect(() => {
     if (!getStoredToken()) {
-      router.replace("/");
+      router.replace("/login");
       return;
     }
     Promise.all([fetchMe(), fetchContractInfo().catch(() => null), fetchPublicGovernanceParams().catch(() => null)])
@@ -57,7 +66,7 @@ export function SubscriptionCheckpoint() {
         setGovernanceParams(nextParams);
       })
       .catch((error) => {
-        router.replace("/");
+        router.replace("/login");
         setMessage(error instanceof Error ? error.message : "目前無法讀取訂閱狀態");
       })
       .finally(() => setLoading(false));
@@ -140,7 +149,7 @@ export function SubscriptionCheckpoint() {
             <Button onClick={handleSubscribe} disabled={pending} className="meal-hero-gradient min-w-[16rem] rounded-[1.2rem] px-6 py-3.5 text-sm font-bold tracking-[0.04em] text-white shadow-[0_18px_32px_rgba(154,68,45,0.18)]">
               {pending ? "處理中..." : "立即訂閱"}
             </Button>
-            <Button variant="ghost" onClick={() => router.push("/")}>離開</Button>
+            <Button variant="ghost" onClick={leaveToLogin}>離開</Button>
             <p className="text-sm text-muted-foreground">付款後進入會員頁。</p>
           </div>
         </div>

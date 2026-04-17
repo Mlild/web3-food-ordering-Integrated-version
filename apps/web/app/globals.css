@@ -2,138 +2,528 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * MealVote warm-earth global stylesheet
+ * Source of truth: design-system/mealvote-main-app/MASTER.md
+ */
+
 :root {
   color-scheme: light;
-  --font-heading: "Avenir Next", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
-  --font-body: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
-  --meal-surface: #fff8f5;
-  --meal-ink: #1e1b18;
-  --meal-primary: #9a442d;
-  --meal-primary-soft: #e07a5f;
-  --meal-secondary: #815347;
-  --meal-outline: rgba(219, 193, 186, 0.9);
-  --meal-surface-low: rgba(251, 242, 237, 0.78);
-  --meal-surface-high: rgba(255, 255, 255, 0.78);
-  --meal-shadow: 0 20px 40px rgba(45, 41, 38, 0.05);
-  --meal-shadow-deep: 0 24px 70px rgba(93, 54, 27, 0.14);
+
+  --font-display: "Manrope", "Noto Sans TC", system-ui, sans-serif;
+  --font-body: "Noto Sans TC", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --sketch-paper: hsl(42 36% 95%);
+  --sketch-paper-deep: hsl(38 29% 88%);
+  --sketch-paper-soft: hsl(39 90% 98%);
+  --sketch-ink: hsl(24 26% 17%);
+  --sketch-ink-soft: hsl(29 12% 38%);
+  --sketch-red: hsl(24 66% 34%);
+  --sketch-blue: hsl(30 80% 52%);
+  --sketch-green: hsl(142 38% 36%);
+  --sketch-yellow: hsl(41 82% 68%);
+  --sketch-kraft: hsl(31 34% 73%);
+
+  --sketch-chain-gold: hsl(30 80% 52%);
+  --sketch-chain-gold-soft: hsl(38 80% 74%);
+  --sketch-verified: hsl(142 38% 36%);
+
+  --sketch-border: 1px solid hsla(33 20% 55% / 0.22);
+  --sketch-border-strong: 1px solid hsla(24 26% 17% / 0.08);
+  --sketch-border-soft: 1px solid hsla(33 20% 55% / 0.14);
+  --sketch-shadow: 0 18px 40px rgba(76, 49, 28, 0.14);
+  --sketch-shadow-sm: 0 10px 24px rgba(76, 49, 28, 0.1);
+  --sketch-shadow-hover: 0 24px 52px rgba(76, 49, 28, 0.2);
+  --sketch-shadow-active: 0 12px 26px rgba(76, 49, 28, 0.14);
+}
+
+/* ─── SVG filter for wobbly hand-drawn borders ─── */
+svg#sketch-filters {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+html,
+body {
+  font-family: var(--font-body);
+  font-size: 17px;
 }
 
 body {
-  @apply bg-background text-foreground antialiased;
+  background-color: var(--sketch-paper);
+  color: var(--sketch-ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background-image:
-    radial-gradient(circle at 12% 14%, rgba(194, 119, 60, 0.14), transparent 22rem),
-    radial-gradient(circle at 88% 8%, rgba(122, 87, 61, 0.1), transparent 18rem),
-    linear-gradient(180deg, rgba(255, 250, 244, 0.98), rgba(246, 237, 227, 0.98));
+    radial-gradient(circle at top left, rgba(234, 196, 147, 0.18), transparent 30%),
+    radial-gradient(circle at top right, rgba(191, 122, 62, 0.12), transparent 28%),
+    linear-gradient(180deg, #fcf7f1 0%, #f7ecdf 100%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.45;
+  background-image:
+    radial-gradient(circle at 15% 18%, rgba(186, 110, 39, 0.08), transparent 18%),
+    radial-gradient(circle at 85% 12%, rgba(255, 255, 255, 0.9), transparent 18%),
+    radial-gradient(circle at 82% 82%, rgba(186, 110, 39, 0.08), transparent 20%);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.18;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23grain)' opacity='0.16'/%3E%3C/svg%3E");
 }
 
 ::selection {
-  background: rgba(194, 119, 60, 0.2);
-  color: hsl(24 26% 17%);
+  background: rgba(186, 110, 39, 0.22);
+  color: var(--sketch-ink);
+}
+
+/* Global numeric tabular defaults for on-chain data trustworthiness. */
+.tabular,
+.sketch-mono,
+code,
+kbd {
+  font-variant-numeric: tabular-nums;
+}
+
+.sketch-mono {
+  font-family: var(--font-mono);
 }
 
 @layer components {
-  .meal-shell {
-    @apply relative min-h-screen overflow-hidden;
-    background:
-      radial-gradient(circle at 14% 18%, rgba(194, 119, 60, 0.18), transparent 24rem),
-      radial-gradient(circle at 86% 14%, rgba(79, 54, 31, 0.12), transparent 18rem),
-      linear-gradient(180deg, #fffaf4 0%, #f6ede3 48%, #f1e5d9 100%);
-  }
+  /* ───────────────────────────── Shell & Page ───────────────────────────── */
 
-  .meal-grid {
-    background-image: radial-gradient(rgba(154, 68, 45, 0.7) 0.5px, transparent 0.5px);
-    background-size: 40px 40px;
-    mask-image: radial-gradient(ellipse at center, black, transparent 80%);
-    opacity: 0.08;
-  }
-
-  .meal-page {
-    @apply relative mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-6 py-10 md:px-10;
-  }
-
-  .meal-page::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    background:
-      radial-gradient(circle at 0% 12%, rgba(194, 119, 60, 0.08), transparent 20rem),
-      radial-gradient(circle at 100% 0%, rgba(122, 87, 61, 0.08), transparent 18rem);
-  }
-
-  .meal-page > * {
+  .sketch-shell {
     position: relative;
+    min-height: 100vh;
+    overflow: hidden;
+    background-color: var(--sketch-paper);
+  }
+
+  .sketch-page {
+    @apply relative mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-6 py-10 md:px-10;
     z-index: 1;
+    max-width: min(92rem, calc(100vw - 2rem));
   }
 
-  .meal-kicker {
-    @apply text-[11px] font-black uppercase tracking-[0.28em] text-muted-foreground;
+  /* ───────────────────────────── Typography helpers ───────────────────── */
+
+  .sketch-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+    line-height: 1.1;
   }
 
-  .meal-panel {
-    @apply rounded-[1.75rem] border bg-[rgba(255,251,247,0.88)] backdrop-blur;
-    border-color: rgba(220, 193, 177, 0.4);
-    box-shadow: var(--meal-shadow);
+  .sketch-kicker {
+    @apply inline-flex items-center gap-2 text-[13px] font-bold uppercase tracking-[0.18em];
+    font-family: var(--font-display);
+    color: var(--sketch-ink-soft);
   }
 
-  .meal-soft-panel {
-    @apply rounded-[1.5rem] border bg-[rgba(251,242,237,0.72)];
-    border-color: rgba(220, 193, 177, 0.36);
+  .sketch-kicker::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--sketch-chain-gold), var(--sketch-red));
+    box-shadow: 0 0 0 5px rgba(186, 110, 39, 0.12);
   }
 
-  .meal-stat {
-    @apply rounded-2xl border bg-[rgba(255,255,255,0.66)] px-4 py-4 backdrop-blur;
-    border-color: rgba(220, 193, 177, 0.32);
-  }
-
-  .meal-glass-header {
-    background: rgba(255, 248, 245, 0.72);
-    backdrop-filter: blur(14px);
-  }
-
-  .meal-hero-gradient {
-    background: linear-gradient(135deg, var(--meal-primary) 0%, var(--meal-primary-soft) 100%);
-  }
-
-  .meal-glass-card {
-    background: rgba(255, 255, 255, 0.42);
-    backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    box-shadow: 0 8px 32px rgba(154, 68, 45, 0.08);
-  }
-
-  .meal-ambient-shadow {
-    box-shadow: var(--meal-shadow);
-  }
-
-  .meal-section-heading {
+  .sketch-section-heading {
     @apply max-w-3xl;
   }
 
-  .meal-section-heading h1,
-  .meal-section-heading h2 {
-    @apply mt-3 font-[var(--font-heading)] font-extrabold tracking-[-0.04em] text-balance text-[clamp(2rem,3vw,3.5rem)];
+  .sketch-section-heading h1,
+  .sketch-section-heading h2 {
+    @apply mt-3 font-bold text-balance;
+    font-family: var(--font-display);
+    line-height: 1.15;
+    font-size: clamp(2rem, 3.5vw, 4rem);
   }
 
-  .meal-section-heading p {
-    @apply mt-3 max-w-2xl text-sm leading-7 text-muted-foreground;
+  .sketch-section-heading p {
+    @apply mt-3 max-w-2xl text-[15px] leading-7;
+    color: var(--sketch-ink-soft);
   }
 
-  .meal-field {
-    @apply w-full rounded-[1.2rem] border bg-[rgba(255,255,255,0.78)] px-4 py-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
-    border-color: rgba(220, 193, 177, 0.46);
+  /* ───────────────────────────── Surfaces ─────────────────────────────── */
+
+  .sketch-card {
+    background: rgba(255, 252, 248, 0.88);
+    border: var(--sketch-border);
+    border-radius: 1.75rem;
+    box-shadow: var(--sketch-shadow);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: transform 220ms ease, box-shadow 220ms ease, background-color 220ms ease;
   }
 
-  .meal-table-shell {
-    @apply overflow-hidden rounded-[1.5rem] border;
-    border-color: rgba(220, 193, 177, 0.38);
-    background: rgba(255, 255, 255, 0.56);
+  .sketch-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--sketch-shadow-hover);
   }
 
-  .meal-ledger-row {
-    @apply flex flex-wrap items-center justify-between gap-4 rounded-[1.35rem] border px-5 py-4 backdrop-blur;
-    border-color: rgba(220, 193, 177, 0.36);
-    background: rgba(255, 255, 255, 0.68);
+  .sketch-card:active {
+    transform: translateY(0);
+    box-shadow: var(--sketch-shadow-active);
+  }
+
+  .sketch-card-alt {
+    background: rgba(255, 252, 248, 0.96);
+    border: var(--sketch-border);
+    border-radius: 1.5rem;
+    box-shadow: var(--sketch-shadow);
+  }
+
+  .sketch-soft-card {
+    background: linear-gradient(180deg, rgba(255, 251, 247, 0.94), rgba(244, 232, 218, 0.92));
+    border: var(--sketch-border-soft);
+    border-radius: 1.5rem;
+  }
+
+  .sketch-panel {
+    background: rgba(255, 251, 247, 0.9);
+    border: var(--sketch-border);
+    border-radius: 2rem;
+    box-shadow: 0 28px 64px rgba(76, 49, 28, 0.18);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  .sketch-stat {
+    background: rgba(255, 255, 255, 0.78);
+    border: var(--sketch-border);
+    border-radius: 1.25rem;
+    box-shadow: var(--sketch-shadow-sm);
+    @apply px-4 py-4;
+  }
+
+  .sketch-header {
+    background: rgba(252, 247, 241, 0.82);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: var(--sketch-border);
+  }
+
+  .sketch-hero-bg {
+    background: linear-gradient(135deg, var(--sketch-red) 0%, var(--sketch-blue) 100%);
+  }
+
+  /* ───────────────────────────── Fields & Table ───────────────────────── */
+
+  .sketch-field {
+    @apply w-full px-4 py-3 text-[15px] transition;
+    background: rgba(255, 255, 255, 0.96);
+    border: var(--sketch-border);
+    border-radius: 1.25rem;
+    font-family: var(--font-body);
+    min-height: 44px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  }
+
+  .sketch-field:focus-visible {
+    outline: none;
+    border-color: rgba(125, 68, 29, 0.4);
+    box-shadow: 0 0 0 4px rgba(186, 110, 39, 0.12);
+  }
+
+  .sketch-field::placeholder {
+    color: rgba(100, 80, 60, 0.58);
+  }
+
+  .sketch-table-shell {
+    @apply overflow-hidden;
+    border: var(--sketch-border);
+    border-radius: 1.5rem;
+    background: rgba(255, 252, 248, 0.92);
+  }
+
+  .sketch-ledger-row {
+    @apply flex flex-wrap items-center justify-between gap-4 px-5 py-4;
+    border-bottom: 1px solid rgba(140, 108, 79, 0.12);
+  }
+
+  .sketch-ledger-row:last-child {
+    border-bottom: none;
+  }
+
+  /* ───────────────────────────── Web3 signature (hand-stamped) ──────── */
+
+  .sketch-chain-badge {
+    @apply inline-flex items-center gap-1.5 px-3 py-1 text-[12px] font-bold uppercase tracking-[0.14em];
+    font-family: var(--font-display);
+    color: var(--sketch-red);
+    border: 1px solid rgba(125, 68, 29, 0.18);
+    border-radius: 999px;
+    background: rgba(255, 248, 239, 0.92);
+    box-shadow: 0 8px 20px rgba(125, 68, 29, 0.08);
+  }
+
+  .sketch-chain-badge svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .sketch-hash-chip {
+    @apply inline-flex cursor-pointer items-center gap-1.5 px-2.5 py-1 text-[13px] transition;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--sketch-ink-soft);
+    border: var(--sketch-border);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+  }
+
+  .sketch-hash-chip:hover {
+    color: var(--sketch-chain-gold);
+    border-color: rgba(186, 110, 39, 0.24);
+    background: rgba(255, 248, 239, 0.96);
+  }
+
+  .sketch-chain-divider {
+    @apply flex items-center gap-3;
+    color: var(--sketch-ink-soft);
+  }
+
+  .sketch-chain-divider::before,
+  .sketch-chain-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(140, 108, 79, 0.3), transparent);
+  }
+
+  .sketch-chain-divider > .node::before {
+    content: "●";
+    color: var(--sketch-chain-gold);
+    margin-right: 6px;
+    font-size: 10px;
+  }
+
+  .sketch-verified-ring {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .sketch-verified-ring::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 1px dashed rgba(186, 110, 39, 0.48);
+    pointer-events: none;
+  }
+
+  .sketch-cta {
+    background: var(--sketch-red);
+    color: hsl(39 90% 97%);
+    border: 1px solid rgba(125, 68, 29, 0.2);
+    border-radius: 1.25rem;
+    box-shadow: var(--sketch-shadow);
+    font-family: var(--font-body);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .sketch-cta:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--sketch-shadow-hover);
+  }
+
+  .sketch-cta:active {
+    transform: translateY(0);
+    box-shadow: var(--sketch-shadow-active);
+  }
+
+  .sketch-block-ticker {
+    @apply inline-flex items-center gap-2 px-3 py-1 text-[12px] font-bold;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--sketch-ink-soft);
+    border: var(--sketch-border);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.78);
+    box-shadow: var(--sketch-shadow-sm);
+  }
+
+  .sketch-block-ticker > .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--sketch-verified);
+    box-shadow: 0 0 0 4px rgba(54, 120, 82, 0.12);
+  }
+
+  /* ───────────────────────────── Decorative Elements ────────────────── */
+
+  .sketch-underline {
+    position: relative;
+    display: inline;
+  }
+
+  .sketch-underline::after {
+    content: "";
+    position: absolute;
+    left: -2px;
+    right: -2px;
+    bottom: 0.18em;
+    z-index: -1;
+    height: 0.52em;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(229, 171, 103, 0.28), rgba(186, 110, 39, 0.18));
+  }
+
+  .sketch-circle {
+    position: relative;
+  }
+
+  .sketch-circle::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
+    border: 1px solid rgba(125, 68, 29, 0.2);
+    border-radius: 999px;
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  .sketch-postit {
+    background: linear-gradient(180deg, rgba(255, 251, 244, 0.98), rgba(245, 232, 219, 0.94));
+    border: var(--sketch-border);
+    border-radius: 1.25rem;
+    padding: 1rem 1.25rem;
+    box-shadow: var(--sketch-shadow-sm);
+    font-family: var(--font-body);
+  }
+
+  .sketch-tape {
+    position: relative;
+  }
+
+  .sketch-tape::before {
+    content: "";
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 20px;
+    background: linear-gradient(90deg, rgba(242, 212, 176, 0.75), rgba(255, 255, 255, 0.45));
+    border: 1px solid rgba(255, 255, 255, 0.32);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .sketch-arrow-right::after {
+    content: "→";
+    font-size: 24px;
+    color: var(--sketch-blue);
+    margin-left: 8px;
+    display: inline;
+    font-family: var(--font-display);
+    font-weight: bold;
+  }
+
+  /* ───────────────────────────── Motion ──────────────────────────────── */
+
+  .sketch-lift {
+    transition: transform 220ms ease, box-shadow 220ms ease, background-color 220ms ease;
+  }
+
+  .sketch-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--sketch-shadow-hover);
+  }
+
+  .sketch-lift:active {
+    transform: translateY(0);
+    box-shadow: var(--sketch-shadow-active);
+  }
+
+  .sketch-tilt-1 { transform: translateY(0); }
+  .sketch-tilt-2 { transform: translateY(0); }
+  .sketch-tilt-3 { transform: translateY(0); }
+  .sketch-tilt-4 { transform: translateY(0); }
+}
+
+/* ─── Backward compat: map old meal-* classes to sketch-* ─── */
+@layer components {
+  .meal-shell { @apply sketch-shell; }
+  .meal-page { @apply sketch-page; }
+  .meal-display { @apply sketch-display; }
+  .meal-kicker { @apply sketch-kicker; }
+  .meal-section-heading { @apply sketch-section-heading; }
+  .meal-panel { @apply sketch-panel; }
+  .meal-soft-panel { @apply sketch-soft-card; }
+  .meal-stat { @apply sketch-stat; }
+
+  .meal-glass-header { @apply sketch-header; }
+  .meal-glass-card { @apply sketch-card; }
+  .meal-hero-gradient { @apply sketch-hero-bg; }
+  .meal-field { @apply sketch-field; }
+  .meal-table-shell { @apply sketch-table-shell; }
+  .meal-ledger-row { @apply sketch-ledger-row; }
+
+  .meal-chain-badge { @apply sketch-chain-badge; }
+  .meal-hash-chip { @apply sketch-hash-chip; }
+  .meal-chain-divider { @apply sketch-chain-divider; }
+  .meal-verified-ring { @apply sketch-verified-ring; }
+  .meal-cta-ember { @apply sketch-cta; }
+  .meal-block-ticker { @apply sketch-block-ticker; }
+  .meal-ambient-shadow { box-shadow: var(--sketch-shadow); }
+  .meal-lift { @apply sketch-lift; }
+
+  .meal-mono { @apply sketch-mono; }
+}
+
+.meal-page > div:first-child,
+.sketch-page > div:first-child {
+  position: sticky;
+  top: 1rem;
+  z-index: 20;
+  border: 1px solid rgba(125, 68, 29, 0.1);
+  border-radius: 1.75rem;
+  background: rgba(252, 247, 241, 0.82);
+  box-shadow: 0 16px 40px rgba(76, 49, 28, 0.1);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  padding: 0.9rem 1rem;
+}
+
+@media (min-width: 768px) {
+  .meal-page > div:first-child,
+  .sketch-page > div:first-child {
+    padding: 0.9rem 1.4rem;
+  }
+}
+
+.meal-page > div:first-child .meal-kicker,
+.meal-page > div:first-child .sketch-kicker,
+.sketch-page > div:first-child .meal-kicker,
+.sketch-page > div:first-child .sketch-kicker {
+  margin: 0;
+}
+
+/* Global reduced-motion guard */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

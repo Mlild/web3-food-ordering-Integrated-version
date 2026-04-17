@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { fetchMe, getStoredToken } from "@/lib/api";
+import { clearStoredToken, fetchMe, getStoredToken } from "@/lib/api";
+import { clearWalletConnection } from "@/lib/wallet-auth";
 
 export function SessionGate({
   children,
@@ -22,7 +23,7 @@ export function SessionGate({
 
     async function verifyAccess() {
       if (!getStoredToken()) {
-        router.replace("/");
+        router.replace("/login");
         return;
       }
       try {
@@ -49,7 +50,9 @@ export function SessionGate({
         }
         if (active) setReady(true);
       } catch {
-        router.replace("/");
+        clearStoredToken();
+        clearWalletConnection();
+        router.replace("/login");
       }
     }
 
@@ -57,7 +60,7 @@ export function SessionGate({
     return () => {
       active = false;
     };
-  }, [requireSubscription, router]);
+  }, [allowedRole, requireSubscription, router]);
 
   if (!ready) {
     return <div className="rounded-[1.5rem] border border-border bg-card p-8 text-sm text-muted-foreground">正在驗證登入狀態...</div>;

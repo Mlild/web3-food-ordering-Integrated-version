@@ -30,7 +30,6 @@ import {
   type Merchant,
   type Order,
   type Proposal,
-  type VoteRecord,
   voteProposal
 } from "@/lib/api";
 import {
@@ -38,22 +37,43 @@ import {
   getWalletBalanceWei,
   isUsableContractAddress,
   sendNativePayment,
-  toFriendlyWalletError,
+  toFriendlyWalletError
 } from "@/lib/chain";
 import { formatWeiAsTwdEth } from "@/lib/currency";
+import {
+  canCreatorConfirmReceipt,
+  canWithdrawProposal,
+  clearPendingOrderingSync,
+  confirmableOrderIds,
+  CreateDraft,
+  dedupeProposals,
+  defaultCreateDraft,
+  detailHref,
+  durationOptions,
+  filterMerchants,
+  formatAggregateOrderStatus,
+  formatCountdown,
+  formatDateTime,
+  formatOrderStatus,
+  formatProposalStatus,
+  formatWeiFriendly,
+  getProposalStageMinutes,
+  listHref,
+  normalizeProposal,
+  PendingOrderingSync,
+  proposalCreatorName,
+  readPendingOrderingSync,
+  relevantDeadline,
+  resolveMerchantId,
+  safeArray,
+  Stage,
+  stageDetailHeading,
+  stageForProposal,
+  StageSortKey,
+  writePendingOrderingSync,
+  aggregateProposalOrder
+} from "@/lib/member-ordering";
 import { OrderSummaryCard } from "@/components/member-order-shared";
-
-type Stage = "create" | "proposal" | "voting" | "ordering" | "submitted";
-
-type CreateDraft = {
-  groupId: string;
-  title: string;
-  maxOptions: string;
-  proposalMinutes: string;
-  voteMinutes: string;
-  orderMinutes: string;
-  merchantIds: string[];
-};
 
 type WorkspaceState = {
   member: Member | null;
@@ -63,48 +83,6 @@ type WorkspaceState = {
   contractInfo: ContractInfo | null;
   governanceParams: GovernanceParams | null;
 };
-
-const defaultCreateDraft: CreateDraft = {
-  groupId: "",
-  title: "",
-  maxOptions: "5",
-  proposalMinutes: "",
-  voteMinutes: "",
-  orderMinutes: "",
-  merchantIds: []
-};
-
-type StageSortKey = "newest" | "oldest" | "title" | "options_desc" | "votes_desc" | "orders_desc" | "deadline_soon";
-
-type PendingOrderingSync =
-  | { action: "create_proposal"; txHash: string; payload: Parameters<typeof createProposal>[0] }
-  | { action: "add_option"; txHash: string; payload: { proposalId: number; merchantId: string; useProposalTicket: boolean } }
-  | { action: "vote"; txHash: string; payload: { proposalId: number; optionId: number; voteCount: number; useVoteTicket: boolean } }
-  | { action: "pay_order"; txHash: string; payload: Parameters<typeof finalizeOrder>[0] };
-
-const ORDERING_SYNC_KEY = "member-ordering-pending-sync";
-
-function readPendingOrderingSync(): PendingOrderingSync | null {
-  if (typeof window === "undefined") return null;
-  const raw = window.sessionStorage.getItem(ORDERING_SYNC_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as PendingOrderingSync;
-  } catch {
-    window.sessionStorage.removeItem(ORDERING_SYNC_KEY);
-    return null;
-  }
-}
-
-function writePendingOrderingSync(value: PendingOrderingSync) {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(ORDERING_SYNC_KEY, JSON.stringify(value));
-}
-
-function clearPendingOrderingSync() {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.removeItem(ORDERING_SYNC_KEY);
-}
 
 export function MemberOrderingWorkspace({ stage, proposalId }: { stage: Stage; proposalId?: number }) {
   const router = useRouter();
@@ -129,6 +107,7 @@ export function MemberOrderingWorkspace({ stage, proposalId }: { stage: Stage; p
   const [menus, setMenus] = useState<Record<string, Merchant>>({});
   const [orderItems, setOrderItems] = useState<Record<string, number>>({});
   const [stageSort, setStageSort] = useState<StageSortKey>("newest");
+  const filteredCreateMerchants = useMemo(() => filterMerchants(state.merchants, createMerchantQuery), [createMerchantQuery, state.merchants]);
 
   const refresh = useCallback(async () => {
     const [me, groups, proposals, contractInfo, merchants, governanceParams, singleProposal] = await Promise.all([
@@ -158,6 +137,45 @@ export function MemberOrderingWorkspace({ stage, proposalId }: { stage: Stage; p
       orderMinutes: current.orderMinutes || String(governanceParams?.orderingDurationMinutes || 1)
     }));
   }, []);
+
+  const submitPlatformPayment = useCallback(
+    async ({
+      valueWei,
+      transaction,
+      pendingSync,
+      ignoreRegistrationError = false
+    }: {
+      valueWei: bigint;
+      transaction: { proposalId: number; action: string; relatedOrder?: string };
+      pendingSync: (txHash: string, syncStartedAt: string) => PendingOrderingSync;
+      ignoreRegistrationError?: boolean;
+    }) => {
+      const treasury = state.contractInfo?.platformTreasury;
+      if (!isUsableContractAddress(treasury)) {
+        return { paymentSubmitted: false, txHash: "", syncStartedAt: "" };
+      }
+
+      const { hash: txHash, account, submittedAt } = await sendNativePayment(treasury as `0x${string}`, valueWei);
+      writePendingOrderingSync(pendingSync(txHash, submittedAt));
+
+      const registration = registerPendingTransaction({
+        proposalId: transaction.proposalId,
+        action: transaction.action,
+        txHash,
+        walletAddress: account,
+        relatedOrder: transaction.relatedOrder
+      });
+
+      if (ignoreRegistrationError) {
+        await registration.catch(() => undefined);
+      } else {
+        await registration;
+      }
+
+      return { paymentSubmitted: true, txHash, syncStartedAt: submittedAt };
+    },
+    [state.contractInfo?.platformTreasury]
+  );
 
   useEffect(() => {
     refresh()
@@ -211,14 +229,27 @@ export function MemberOrderingWorkspace({ stage, proposalId }: { stage: Stage; p
           return;
         }
         if (pending.action === "add_option") {
-          await addProposalOption(pending.payload.proposalId, pending.payload.merchantId, pending.payload.useProposalTicket, pending.txHash);
+          await addProposalOption(
+            pending.payload.proposalId,
+            pending.payload.merchantId,
+            pending.payload.useProposalTicket,
+            pending.txHash,
+            pending.payload.syncStartedAt
+          );
           clearPendingOrderingSync();
           await refresh();
           setMessage("上一筆提案付款已成功補回同步。");
           return;
         }
         if (pending.action === "vote") {
-          await voteProposal(pending.payload.proposalId, pending.payload.optionId, pending.payload.voteCount, pending.payload.useVoteTicket, pending.txHash);
+          await voteProposal(
+            pending.payload.proposalId,
+            pending.payload.optionId,
+            pending.payload.voteCount,
+            pending.payload.useVoteTicket,
+            pending.txHash,
+            pending.payload.syncStartedAt
+          );
           clearPendingOrderingSync();
           await refresh();
           setMessage("上一筆投票付款已成功補回同步。");
@@ -330,44 +361,37 @@ export function MemberOrderingWorkspace({ stage, proposalId }: { stage: Stage; p
         useInitialProposalTickets && (state.member?.proposalCouponCount || 0) > 0
           ? createDraft.merchantIds.map((_, index) => index < (state.member?.proposalCouponCount || 0))
           : createDraft.merchantIds.map(() => false);
-      if (isUsableContractAddress(state.contractInfo?.platformTreasury) && state.governanceParams) {
-        if (!state.governanceParams) {
-          throw new Error("目前無法讀取費率參數，暫時不能送出付款。");
-        }
+      if (isUsableContractAddress(state.contractInfo?.platformTreasury)) {
+        if (!state.governanceParams) throw new Error("目前無法讀取費率參數，暫時不能送出付款。");
         const createFeeWei = BigInt(useCreateOrderTicket ? 0 : state.governanceParams?.createFeeWei || 0);
         const initialProposalFeeWei = createDraft.merchantIds.reduce((total, _merchantId, index) => {
           if (initialProposalTicketFlags[index]) return total;
           return total + BigInt(state.governanceParams?.proposalFeeWei || 0);
         }, 0n);
         const txValueWei = createFeeWei + initialProposalFeeWei;
-        const { hash: chainTxHash, account } = await sendNativePayment(
-          state.contractInfo!.platformTreasury as `0x${string}`,
-          txValueWei
-        );
-        paymentSubmitted = true;
-        syncTxHash = chainTxHash;
-        writePendingOrderingSync({
-          action: "create_proposal",
-          txHash: chainTxHash,
-          payload: {
-            title: createDraft.title.trim(),
-            description: "",
-            maxOptions: Number(createDraft.maxOptions),
-            merchantIds: createDraft.merchantIds,
-            useInitialProposalTickets: initialProposalTicketFlags,
-            proposalMinutes: Number(createDraft.proposalMinutes),
-            voteMinutes: Number(createDraft.voteMinutes),
-            orderMinutes: Number(createDraft.orderMinutes),
-            groupId: Number(createDraft.groupId),
-            useCreateOrderTicket
-          }
+        const payment = await submitPlatformPayment({
+          valueWei: txValueWei,
+          transaction: { proposalId: 0, action: "create_proposal" },
+          pendingSync: (txHash, syncStartedAt) => ({
+            action: "create_proposal",
+            txHash,
+            payload: {
+              title: createDraft.title.trim(),
+              description: "",
+              maxOptions: Number(createDraft.maxOptions),
+              merchantIds: createDraft.merchantIds,
+              useInitialProposalTickets: initialProposalTicketFlags,
+              proposalMinutes: Number(createDraft.proposalMinutes),
+              voteMinutes: Number(createDraft.voteMinutes),
+              orderMinutes: Number(createDraft.orderMinutes),
+              groupId: Number(createDraft.groupId),
+              useCreateOrderTicket
+            }
+          }),
+          ignoreRegistrationError: true
         });
-        await registerPendingTransaction({
-          proposalId: 0,
-          action: "create_proposal",
-          txHash: chainTxHash,
-          walletAddress: account
-        }).catch(() => undefined);
+        paymentSubmitted = payment.paymentSubmitted;
+        syncTxHash = payment.txHash;
       }
       const proposal = await createProposal({
         title: createDraft.title.trim(),
@@ -412,28 +436,24 @@ export function MemberOrderingWorkspace({ stage, proposalId }: { stage: Stage; p
     setMessage("");
     let paymentSubmitted = false;
     let syncTxHash = "";
+    let syncStartedAt = "";
     try {
       if (isUsableContractAddress(state.contractInfo?.platformTreasury)) {
-        const value = BigInt(useProposalTicket ? 0 : detail.proposalFeeWei || 0);
-        const { hash: txHash, account } = await sendNativePayment(
-          state.contractInfo!.platformTreasury as `0x${string}`,
-          value
-        );
-        paymentSubmitted = true;
-        syncTxHash = txHash;
-        writePendingOrderingSync({
-          action: "add_option",
-          txHash,
-          payload: { proposalId: detail.id, merchantId, useProposalTicket }
+        const payment = await submitPlatformPayment({
+          valueWei: BigInt(useProposalTicket ? 0 : detail.proposalFeeWei || 0),
+          transaction: { proposalId: detail.id, action: "add_option" },
+          pendingSync: (txHash, syncStartedAt) => ({
+            action: "add_option",
+            txHash,
+            payload: { proposalId: detail.id, merchantId, useProposalTicket, syncStartedAt }
+          }),
+          ignoreRegistrationError: true
         });
-        await registerPendingTransaction({
-          proposalId: detail.id,
-          action: "add_option",
-          txHash,
-          walletAddress: account
-        }).catch(() => undefined);
+        paymentSubmitted = payment.paymentSubmitted;
+        syncTxHash = payment.txHash;
+        syncStartedAt = payment.syncStartedAt || "";
       }
-      await addProposalOption(detail.id, merchantId, useProposalTicket, syncTxHash || undefined);
+      await addProposalOption(detail.id, merchantId, useProposalTicket, syncTxHash || undefined, syncStartedAt || undefined);
       clearPendingOrderingSync();
       setOptionMerchantId("");
       setOptionMerchantQuery("");
@@ -491,31 +511,26 @@ export function MemberOrderingWorkspace({ stage, proposalId }: { stage: Stage; p
     let paymentSubmitted = false;
     let syncTxHash = "";
     try {
-      const option = detail.options.find((item) => item.id === optionId);
       const voteCount = Number(voteTokens || "0");
+      const actualVoteCount = useVoteTicket && voteCount <= 0 ? 1 : voteCount;
+      let syncStartedAt = "";
       if (isUsableContractAddress(state.contractInfo?.platformTreasury)) {
-        const actualVoteCount = voteCount;
         const payableVotes = useVoteTicket ? Math.max(actualVoteCount - 1, 0) : actualVoteCount;
-        const value = BigInt((detail.voteFeeWei || 0) * payableVotes);
-        const { hash: txHash, account } = await sendNativePayment(
-          state.contractInfo!.platformTreasury as `0x${string}`,
-          value
-        );
-        paymentSubmitted = true;
-        syncTxHash = txHash;
-        writePendingOrderingSync({
-          action: "vote",
-          txHash,
-          payload: { proposalId: detail.id, optionId, voteCount: Number(voteTokens || "0"), useVoteTicket }
+        const payment = await submitPlatformPayment({
+          valueWei: BigInt((detail.voteFeeWei || 0) * payableVotes),
+          transaction: { proposalId: detail.id, action: "vote" },
+          pendingSync: (txHash, startedAt) => ({
+            action: "vote",
+            txHash,
+            payload: { proposalId: detail.id, optionId, voteCount: actualVoteCount, useVoteTicket, syncStartedAt: startedAt }
+          }),
+          ignoreRegistrationError: true
         });
-        await registerPendingTransaction({
-          proposalId: detail.id,
-          action: "vote",
-          txHash,
-          walletAddress: account
-        }).catch(() => undefined);
+        paymentSubmitted = payment.paymentSubmitted;
+        syncTxHash = payment.txHash;
+        syncStartedAt = payment.syncStartedAt || "";
       }
-      const updatedProposal = await voteProposal(detail.id, optionId, Number(voteTokens || "0"), useVoteTicket, syncTxHash || undefined);
+      const updatedProposal = await voteProposal(detail.id, optionId, actualVoteCount, useVoteTicket, syncTxHash || undefined, syncStartedAt || undefined);
       clearPendingOrderingSync();
       setState((current) => ({
         ...current,
@@ -574,11 +589,13 @@ export function MemberOrderingWorkspace({ stage, proposalId }: { stage: Stage; p
     setMessage("");
     let paymentSubmitted = false;
     let syncTxHash = "";
+    let syncStartedAt = "";
     try {
       const result = await signOrder(detail.id, payload);
       if (!result.signature) {
         throw new Error("訂單簽章未成功產生，請重新操作。");
       }
+      const signature = result.signature;
       const { account: walletAddress } = await ensureSepoliaClients();
       const requiredBalance = BigInt(result.quote.requiredBalanceWei);
       if (walletAddress) {
@@ -589,35 +606,35 @@ export function MemberOrderingWorkspace({ stage, proposalId }: { stage: Stage; p
       }
 
       if (isUsableContractAddress(state.contractInfo?.platformTreasury)) {
-        const { hash: txHash, account } = await sendNativePayment(
-          state.contractInfo!.platformTreasury as `0x${string}`,
-          BigInt(result.quote.subtotalWei)
-        );
-        paymentSubmitted = true;
-        syncTxHash = txHash;
-        writePendingOrderingSync({
-          action: "pay_order",
-          txHash,
-          payload: {
+        const payment = await submitPlatformPayment({
+          valueWei: BigInt(result.quote.subtotalWei),
+          transaction: {
             proposalId: detail.id,
-            items: payload,
-            signature: result.signature
-          }
+            action: "pay_order",
+            relatedOrder: result.signature.orderHash
+          },
+          pendingSync: (txHash, syncStartedAt) => ({
+            action: "pay_order",
+            txHash,
+            payload: {
+              proposalId: detail.id,
+              items: payload,
+              signature,
+              syncStartedAt
+            }
+          })
         });
-        await registerPendingTransaction({
-          proposalId: detail.id,
-          action: "pay_order",
-          txHash,
-          walletAddress: account,
-          relatedOrder: result.signature.orderHash
-        });
+        paymentSubmitted = payment.paymentSubmitted;
+        syncTxHash = payment.txHash;
+        syncStartedAt = payment.syncStartedAt || "";
       }
 
       await finalizeOrder({
         proposalId: detail.id,
         items: payload,
-        signature: result.signature,
-        txHash: syncTxHash || undefined
+        signature,
+        txHash: syncTxHash || undefined,
+        syncStartedAt: syncStartedAt || undefined
       });
       clearPendingOrderingSync();
       setOrderItems({});
@@ -724,14 +741,7 @@ export function MemberOrderingWorkspace({ stage, proposalId }: { stage: Stage; p
                 })}
               </div>
               <div className="mt-3 grid gap-2">
-                {state.merchants
-                  .filter((merchant) => {
-                    const keyword = createMerchantQuery.trim().toLowerCase();
-                    if (!keyword) return true;
-                    return merchant.id.toLowerCase().includes(keyword) || merchant.name.toLowerCase().includes(keyword);
-                  })
-                  .slice(0, 6)
-                  .map((merchant) => {
+                {filteredCreateMerchants.map((merchant) => {
                     const isSelected = createDraft.merchantIds.includes(merchant.id);
                     return (
                       <button
@@ -1300,13 +1310,7 @@ function MerchantPicker(props: {
   onQueryChange: (query: string) => void;
   onSelect: (merchantId: string) => void;
 }) {
-  const filtered = useMemo(() => {
-    const keyword = props.query.trim().toLowerCase();
-    if (!keyword) return props.merchants.slice(0, 6);
-    return props.merchants
-      .filter((merchant) => merchant.id.toLowerCase().includes(keyword) || merchant.name.toLowerCase().includes(keyword))
-      .slice(0, 6);
-  }, [props.merchants, props.query]);
+  const filtered = useMemo(() => filterMerchants(props.merchants, props.query), [props.merchants, props.query]);
 
   return (
     <Field label={props.label}>
@@ -1351,300 +1355,4 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="mt-2 text-base font-semibold">{value}</p>
     </div>
   );
-}
-
-function detailHref(stage: Stage, proposalId: number) {
-  if (stage === "proposal" || stage === "create") return `/member/ordering/proposals/${proposalId}`;
-  if (stage === "voting") return `/member/ordering/voting/${proposalId}`;
-  if (stage === "ordering") return `/member/ordering/ordering/${proposalId}`;
-  return `/member/ordering/submitted/${proposalId}`;
-}
-
-function stageForProposal(proposal: Proposal, now: number): Stage | null {
-  const proposalDeadline = new Date(proposal.proposalDeadline).getTime();
-  const voteDeadline = new Date(proposal.voteDeadline).getTime();
-  const orderDeadline = new Date(proposal.orderDeadline).getTime();
-  const hasWinner = proposal.options.some((option) => option.id === proposal.winnerOptionId);
-  if (Number.isFinite(proposalDeadline) && now < proposalDeadline) return "proposal";
-  if (Number.isFinite(voteDeadline) && now < voteDeadline) return "voting";
-  if (hasWinner && Number.isFinite(orderDeadline) && now < orderDeadline) return "ordering";
-  if (hasWinner || proposal.orderMemberCount > 0 || safeArray(proposal.orders).length > 0) return "submitted";
-  return null;
-}
-
-function listHref(stage: Stage) {
-  if (stage === "proposal" || stage === "create") return "/member/ordering/proposals";
-  if (stage === "voting") return "/member/ordering/voting";
-  if (stage === "ordering") return "/member/ordering/ordering";
-  return "/member/ordering/submitted";
-}
-
-function relevantDeadline(proposal: Proposal, stage: Stage) {
-  if (stage === "proposal" || stage === "create") return new Date(proposal.proposalDeadline);
-  if (stage === "voting") return new Date(proposal.voteDeadline);
-  if (stage === "ordering") return new Date(proposal.orderDeadline);
-  return new Date(proposal.createdAt);
-}
-
-function canWithdrawProposal(proposal: Proposal, memberId: number) {
-  if (!memberId || proposal.createdBy !== memberId) return false;
-  if (proposal.status !== "proposing") return false;
-  if (safeArray(proposal.votes).length > 0 || safeArray(proposal.orders).length > 0) return false;
-  return proposal.options.every((option) => option.proposerMemberId === memberId);
-}
-
-function safeArray<T>(value: T[] | null | undefined) {
-  return Array.isArray(value) ? value : [];
-}
-
-function normalizeProposal(proposal: Proposal): Proposal {
-  const votes = safeArray(proposal.votes);
-  const createdAt = new Date(proposal.createdAt).getTime();
-  let proposalDeadline = new Date(proposal.proposalDeadline).getTime();
-  let voteDeadline = new Date(proposal.voteDeadline).getTime();
-  let orderDeadline = new Date(proposal.orderDeadline).getTime();
-  const proposalMinutes = Math.round((proposalDeadline - createdAt) / 60000);
-  if (Number.isFinite(createdAt) && Number.isFinite(proposalDeadline) && proposalMinutes > 90 && proposalMinutes <= 1530) {
-    proposalDeadline -= 1440 * 60000;
-    voteDeadline -= 1440 * 60000;
-    orderDeadline -= 1440 * 60000;
-  }
-  return {
-    ...proposal,
-    proposalDeadline: new Date(proposalDeadline).toISOString(),
-    voteDeadline: new Date(voteDeadline).toISOString(),
-    orderDeadline: new Date(orderDeadline).toISOString(),
-    options: safeArray(proposal.options),
-    orders: safeArray(proposal.orders),
-    votes,
-    totalVoteCount: proposal.totalVoteCount ?? votes.reduce((sum, vote) => sum + (vote.voteCount ?? vote.voteWeight ?? 0), 0)
-  };
-}
-
-function dedupeProposals(proposals: Proposal[]) {
-  const byKey = new Map<string, Proposal>();
-  for (const proposal of proposals) {
-    const key = `proposal:${proposal.id}`;
-    const existing = byKey.get(key);
-    if (!existing) {
-      byKey.set(key, proposal);
-      continue;
-    }
-    byKey.set(key, scoreProposal(existing) >= scoreProposal(proposal) ? existing : proposal);
-  }
-  return Array.from(byKey.values());
-}
-
-function scoreProposal(proposal: Proposal) {
-  let score = 0;
-  score += proposal.groupId > 0 ? 1000 : 0;
-  score += proposal.options.length * 100;
-  score += safeArray(proposal.orders).length * 20;
-  score += safeArray(proposal.votes).length * 10;
-  score += proposal.title.startsWith("Chain Proposal #") ? 0 : 50;
-  return score;
-}
-
-function resolveMerchantId(selectedMerchantId: string, query: string, merchants: Merchant[]) {
-  if (selectedMerchantId.trim() && merchants.some((merchant) => merchant.id === selectedMerchantId.trim())) return selectedMerchantId.trim();
-  const keyword = query.trim().toLowerCase();
-  const exactId = merchants.find((merchant) => merchant.id.toLowerCase() === keyword);
-  if (exactId) return exactId.id;
-  const exactName = merchants.find((merchant) => merchant.name.trim().toLowerCase() === keyword);
-  return exactName?.id || "";
-}
-
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "未設定";
-  return date.toLocaleString("zh-TW");
-}
-
-function formatCountdown(value: string, now: number) {
-  const target = new Date(value).getTime();
-  if (!Number.isFinite(target)) return "未設定";
-  const diff = target - now;
-  if (diff <= 0) return "已截止";
-  const totalSeconds = Math.floor(diff / 1000);
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  if (days > 0) {
-    return `${days} 天 ${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  }
-  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-}
-
-function getProposalStageMinutes(proposal: Proposal, stage: "proposal" | "vote" | "order") {
-  const createdAt = new Date(proposal.createdAt).getTime();
-  const proposalAt = new Date(proposal.proposalDeadline).getTime();
-  const voteAt = new Date(proposal.voteDeadline).getTime();
-  const orderAt = new Date(proposal.orderDeadline).getTime();
-  if (!Number.isFinite(createdAt) || !Number.isFinite(proposalAt) || !Number.isFinite(voteAt) || !Number.isFinite(orderAt)) return 0;
-  if (stage === "proposal") return normalizeStageMinutes(Math.round((proposalAt - createdAt) / 60000));
-  if (stage === "vote") return normalizeStageMinutes(Math.round((voteAt - proposalAt) / 60000));
-  return normalizeStageMinutes(Math.round((orderAt - voteAt) / 60000));
-}
-
-function normalizeStageMinutes(minutes: number) {
-  if (!Number.isFinite(minutes) || minutes <= 0) return 0;
-  let normalized = minutes;
-  while (normalized > 1440) {
-    normalized -= 1440;
-  }
-  if (normalized > 90 && normalized-1440 <= 90) {
-    normalized -= 1440;
-  }
-  if (normalized > 90 && normalized >= 1440) {
-    normalized = normalized % 1440;
-  }
-  return Math.max(0, normalized);
-}
-
-function formatProposalStatus(status: string) {
-  switch (status) {
-    case "proposing":
-      return "店家提案中";
-    case "voting":
-      return "投票中";
-    case "ordering":
-      return "點餐中";
-    case "awaiting_settlement":
-      return "待結算";
-    case "settled":
-      return "已完成";
-    case "failed":
-      return "成立失敗";
-    case "cancelled":
-      return "已撤回";
-    default:
-      return status;
-  }
-}
-
-function stageDetailHeading(stage: Stage) {
-  switch (stage) {
-    case "proposal":
-      return { kicker: "Proposal stage", title: "店家提案階段" };
-    case "voting":
-      return { kicker: "Voting stage", title: "投票階段" };
-    case "ordering":
-      return { kicker: "Ordering stage", title: "點餐階段" };
-    case "submitted":
-      return { kicker: "Submitted stage", title: "完成送出訂單階段" };
-    case "create":
-    default:
-      return { kicker: "Create stage", title: "建立訂單" };
-  }
-}
-
-function formatOrderStatus(status: string) {
-  switch (status) {
-    case "payment_received":
-    case "paid_local":
-    case "paid_onchain":
-      return "付款完成";
-    case "merchant_accepted":
-      return "店家已接單";
-    case "merchant_completed":
-      return "店家已做完";
-    case "ready_for_payout":
-      return "平台撥款中";
-    case "platform_paid":
-      return "店家已收款";
-    default:
-      return status;
-  }
-}
-
-function aggregateProposalOrder(proposal: Proposal) {
-  const orders = safeArray(proposal.orders);
-  const amountWei = orders.reduce((total, order) => total + BigInt(order.amountWei || "0"), 0n);
-  const itemCount = orders.reduce((total, order) => total + safeArray(order.items).reduce((sum, item) => sum + item.quantity, 0), 0);
-  const createdAt = orders.length ? new Date(Math.min(...orders.map((order) => new Date(order.createdAt).getTime()))).toISOString() : undefined;
-  const acceptedAt = latestTimeline(orders.map((order) => order.acceptedAt));
-  const completedAt = latestTimeline(orders.map((order) => order.completedAt));
-  const confirmedAt = latestTimeline(orders.map((order) => order.confirmedAt));
-  const paidOutAt = latestTimeline(orders.map((order) => order.paidOutAt));
-  return {
-    memberCount: orders.length,
-    itemCount,
-    amountWei,
-    status: aggregateOrderStatus(orders.map((order) => order.status)),
-    createdAt,
-    acceptedAt,
-    completedAt,
-    confirmedAt,
-    paidOutAt,
-  };
-}
-
-function confirmableOrderIds(proposal: Proposal) {
-  return safeArray(proposal.orders)
-    .filter((order) => order.status === "merchant_completed")
-    .map((order) => order.id);
-}
-
-function proposalCreatorName(proposal: Proposal) {
-  const name = String(proposal.createdByName || proposal.orders[0]?.createdByName || "").trim();
-  return name || "未知";
-}
-
-function canCreatorConfirmReceipt(proposal: Proposal, member: Member | null) {
-  const proposalCreatorId = Number(proposal.createdBy || proposal.orders[0]?.createdBy || 0);
-  const currentMemberId = Number(member?.id || 0);
-  const proposalCreatorName = String(proposal.createdByName || proposal.orders[0]?.createdByName || "").trim();
-  const currentMemberName = String(member?.displayName || "").trim();
-  const isCreator = proposalCreatorId > 0 && currentMemberId > 0
-    ? proposalCreatorId === currentMemberId
-    : proposalCreatorName !== "" && currentMemberName !== "" && proposalCreatorName === currentMemberName;
-  if (!isCreator) return false;
-  return confirmableOrderIds(proposal).length > 0;
-}
-
-function latestTimeline(values: Array<string | undefined>) {
-  const filtered = values.filter(Boolean) as string[];
-  if (!filtered.length) return undefined;
-  return filtered.sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0];
-}
-
-function aggregateOrderStatus(statuses: string[]) {
-  if (!statuses.length) return "payment_received";
-  if (statuses.some((status) => status === "payment_received" || status === "paid_local" || status === "paid_onchain")) return "payment_received";
-  if (statuses.some((status) => status === "merchant_accepted")) return "merchant_accepted";
-  if (statuses.some((status) => status === "merchant_completed")) return "merchant_completed";
-  if (statuses.some((status) => status === "ready_for_payout")) return "ready_for_payout";
-  if (statuses.every((status) => status === "platform_paid")) return "platform_paid";
-  return statuses[0];
-}
-
-function formatAggregateOrderStatus(status: string) {
-  switch (status) {
-    case "payment_received":
-    case "paid_local":
-    case "paid_onchain":
-      return "點餐階段進行中";
-    case "merchant_accepted":
-      return "店家已接單";
-    case "merchant_completed":
-      return "店家已完成製作";
-    case "ready_for_payout":
-      return "會員已確認，待平台撥款";
-    case "platform_paid":
-      return "已完成";
-    default:
-      return formatOrderStatus(status);
-  }
-}
-
-function formatWeiFriendly(value: string | number | bigint) {
-  return formatWeiAsTwdEth(value);
-}
-
-function durationOptions(options: number[] | undefined, fallback: number) {
-  const values = Array.from(new Set([fallback, ...(options || [])].filter((value) => Number.isFinite(value) && value > 0)))
-    .map((value) => Math.trunc(value))
-    .sort((left, right) => left - right);
-  return values.length ? values : [1];
 }

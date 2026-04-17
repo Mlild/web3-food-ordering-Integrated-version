@@ -9,7 +9,7 @@ export default async function MemberGroupOrderDetailPage({ params }: { params: P
   return (
     <main id="main-content" className="meal-page max-w-7xl">
       <div className="flex items-center justify-between gap-4">
-        <Link href="/" className="meal-kicker">MealVote / Group Order Detail</Link>
+        <Link href="/member" className="meal-kicker">MealVote / Group Order Detail</Link>
         <AppNav />
       </div>
       <SessionGate requireSubscription>

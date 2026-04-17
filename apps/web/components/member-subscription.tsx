@@ -144,7 +144,7 @@ export function MemberSubscription() {
         <Button onClick={handleSubscribe} disabled={pending}>{member.subscriptionActive ? "續訂鏈上月訂閱" : "立即訂閱"}</Button>
         <Button variant="secondary" onClick={handleCancelSubscription} disabled={pending || !member.subscriptionActive}>取消訂閱</Button>
         <Button asChild variant="ghost">
-          <Link href="/">離開</Link>
+          <Link href="/member">離開</Link>
         </Button>
       </div>
       {message ? <p className="mt-4 text-sm text-primary">{message}</p> : null}

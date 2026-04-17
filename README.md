@@ -1,51 +1,84 @@
 # MealVote
 
-去中心化群組投票點餐系統。
+去中心化群組投票點餐系統，整合會員登入、訂閱開通、群組管理、店家投票、點餐流程、商家工作台與平台後台。
 
-目前主線功能：
-- 錢包簽名登入
-- 月訂閱
-- 群組管理
-- 提案 / 投票 / 點餐
-- 排行榜 / 使用紀錄
-- Sepolia 合約互動
+## 功能概覽
 
-## Tech Stack
+- MetaMask 錢包簽名登入
+- 會員訂閱開通與優惠券 / 票券紀錄
+- 群組建立、邀請碼加入、群組使用紀錄
+- 建立訂單、提案店家、投票、點餐、送單追蹤
+- 店家端菜單、評論、訂單與營運資料
+- 管理端治理參數、撥款與審核流程
 
-- Frontend: Next.js 15 + React + Tailwind CSS + shadcn/ui
-- Web3: wagmi + viem + MetaMask
-- Backend: Go + Gin
-- Database: PostgreSQL + GORM
-- Contracts: Solidity 0.8.24
-- Contract Tooling: Hardhat + Foundry
-- Chain: Sepolia (`11155111`)
+## 技術棧
 
-## Project Structure
+- Frontend: Next.js 15、React 18、Tailwind CSS、shadcn/ui
+- Backend: Go、Gin
+- Database: PostgreSQL
+- Web3: wagmi、viem
+- Smart Contracts: Solidity、Foundry、Hardhat
+- Network: Sepolia (`11155111`)
+
+## 專案結構
 
 - `apps/web`: 主線前端
-- `backend`: API、資料庫、鏈上同步
+- `backend`: API、資料庫存取、鏈上同步、排程
 - `contract`: Solidity 合約
 - `script`: Foundry 部署腳本
 - `scripts`: 合約設定同步腳本
 
-## Main Routes
 
-- `/`: 首頁 / 登入入口
-- `/subscribe`: 訂閱開通頁
-- `/member`: 會員 / 群組 / 管理員菜單管理
-- `/governance`: 提案 / 投票 / 點餐
-- `/leaderboard`: 排行榜
-- `/records`: 使用紀錄
+## Docker 開發
 
-## Local Development
+目前建議的日常開發方式是直接用 Docker Compose。
 
-### 1. Start PostgreSQL
+### 啟動
+
+在 repo 根目錄：
+
+```bash
+docker compose up --build -d
+```
+
+服務預設會啟動在：
+
+- Frontend: [http://localhost:3000](http://localhost:3000)
+- Backend: [http://localhost:8080](http://localhost:8080)
+- PostgreSQL: `localhost:5432`
+
+### 前端重建
+
+當你修改 `apps/web` 後想強制重建前端容器：
+
+```bash
+docker compose up --build --force-recreate -d frontend
+```
+
+### 查看狀態與 log
+
+```bash
+docker compose ps
+docker logs --tail=80 mealvote-frontend
+docker logs --tail=80 mealvote-backend
+```
+
+### Docker 設定說明
+
+- `compose.yaml` 的 `frontend` 服務使用 `apps/web/Dockerfile.dev`
+- `apps/web/Dockerfile.dev` 使用 `npm ci`
+- 前端容器已啟用 `CHOKIDAR_USEPOLLING=true` 與 `WATCHPACK_POLLING=true`，讓 Docker 內熱更新更穩定
+- `backend` 服務會讀取 `backend/.env.deployment`
+
+## 本機非 Docker 開發
+
+### 1. 啟動 PostgreSQL
 
 ```bash
 docker compose up -d postgres
 ```
 
-### 2. Start backend
+### 2. 啟動後端
 
 ```bash
 cd backend
@@ -54,95 +87,117 @@ DB_AUTOMIGRATE=true \
 go run .
 ```
 
-### 3. Start frontend
+後端預設網址：`http://localhost:8080`
+
+### 3. 啟動前端
+
+在 repo 根目錄：
 
 ```bash
 npm run web:install
 npm run web:dev
 ```
 
-Default URLs:
-- Frontend: [http://localhost:3000](http://localhost:3000)
-- Backend: [http://localhost:8080](http://localhost:8080)
-- Health: [http://localhost:8080/health](http://localhost:8080/health)
+前端預設網址：`http://localhost:3000`
 
-## Docker Development
+## Production Docker Build
 
-Run everything with Docker:
+### Frontend
+
+`apps/web/Dockerfile` 為 production image，使用 Next standalone output。
 
 ```bash
-docker compose up --build
+docker build -t mealvote-web ./apps/web
+docker run --rm -p 3000:3000 mealvote-web
 ```
 
-After startup:
-- Frontend: [http://localhost:3000](http://localhost:3000)
-- Backend: [http://localhost:8080](http://localhost:8080)
-- PostgreSQL: `localhost:5432`
+### Backend
 
-## Environment Variables
+```bash
+docker build -t mealvote-api ./backend
+docker run --rm -p 8080:8080 \
+  -e HTTP_ADDR=:8080 \
+  -e DATABASE_URL='postgres://mealvote:mealvote@host.docker.internal:5432/mealvote?sslmode=disable' \
+  mealvote-api
+```
 
-Backend:
+## 常用指令
+
+在 repo 根目錄：
+
+```bash
+npm run web:install
+npm run web:dev
+npm run web:build
+npm run web:start
+npm run compile
+npm run test:contracts
+npm run deploy:sepolia
+npm run export:contracts
+```
+
+## 主要路由
+
+- `/`: 目前會導向 `/member`
+- `/login`: 使用者 / 店家 / 平台管理者登入入口
+- `/subscribe`: 會員訂閱開通頁
+- `/member`: 會員首頁，需已登入且已訂閱
+- `/member/groups`: 群組總覽
+- `/member/merchants`: 店家清單
+- `/member/invite-codes`: 註冊邀請碼與使用紀錄
+- `/member/records`: 使用紀錄
+- `/member/badges`: 勳章兌換
+- `/member/ordering/*`: 建單、提案、投票、點餐、已送出訂單
+- `/merchant`: 店家工作台
+- `/admin`: 管理後台
+
+## 登入與訂閱流程
+
+- 未登入使用者進入受保護頁面時，會被導向 `/login`
+- 會員登入成功但尚未訂閱時，會被導向 `/subscribe`
+- `/member` 目前維持「已登入且已訂閱」才能進入
+- `/subscribe` 的 `離開` 會清除目前登入狀態並回到 `/login`
+
+## 環境變數
+
+### Backend
+
+常用：
+
+- `HTTP_ADDR`
 - `DATABASE_URL`
 - `DB_AUTOMIGRATE`
-- `HTTP_ADDR`
+- `SYNC_ON_START`
 - `CHAIN_ID`
 - `RPC_URL`
+- `GOVERNANCE_CONTRACT_ADDRESS`
+- `ORDER_ESCROW_CONTRACT_ADDRESS`
 - `ORDER_CONTRACT_ADDRESS`
-- `MEMBERSHIP_TOKEN_ADDRESS`
 - `PLATFORM_TREASURY_ADDRESS`
+- `MEMBERSHIP_TOKEN_ADDRESS`
 - `SIGNER_PRIVATE_KEY`
 
-Frontend:
+Rate limit / 排程相關：
+
+- `RATE_LIMIT_LOGIN_MAX`
+- `RATE_LIMIT_LOGIN_WINDOW_SEC`
+- `RATE_LIMIT_REGISTER_MAX`
+- `RATE_LIMIT_REGISTER_WINDOW_SEC`
+- `RATE_LIMIT_WALLET_LINK_MAX`
+- `RATE_LIMIT_WALLET_LINK_WINDOW_SEC`
+- `INACTIVE_GROUP_PRUNE_INTERVAL_MIN`
+- `INACTIVE_GROUP_THRESHOLD_DAYS`
+- `ORDER_SIGNATURE_EXPIRY_SEC`
+- `INDEXER_BATCH_SIZE`
+
+### Frontend
+
 - `NEXT_PUBLIC_API_BASE`
 - `NEXT_PUBLIC_CHAIN_ID`
 - `NEXT_PUBLIC_ORDER_CONTRACT_ADDRESS`
 - `NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS`
 
-## Product Rules
-
-### Wallet Auth
-
-- 主身份為 `walletAddress`
-- 同一錢包再次簽名只會登入，不會重複建立會員
-- 第一次建立會員必須填顯示名稱
-- 註冊邀請碼為隨機生成，生成後固定
-
-### Subscription
-
-- 月訂閱費用：`99 Token`
-- 有效期間：`30 天`
-- 未訂閱使用者導向 `/subscribe`
-- 已訂閱後才可進入完整系統頁面
-
-### Governance
-
-- 建立 proposal round：消耗 token
-- 提名店家：消耗 token 或提案券
-- 投票：依 `tokenAmount` 加權
-- 點餐：後端先算金額，再喚起 MetaMask 支付
-
-## Admin Features
-
-管理員可在 `/member`：
-- 手動新增店家
-- 手動新增菜單品項
-- CSV 匯入菜單
-
-CSV 欄位格式：
-
-```csv
-merchant_id,merchant_name,merchant_group,payout_address,item_id,item_name,price_wei,description
-```
-
-## Contracts
-
-Main contract:
-- `contract/VotingSystem-v3.sol`
-
-Deploy script:
-- `script/DeployMealVote.s.sol`
-
-Sepolia deploy example:
+## 合約部署
 
 ```bash
 export SEPOLIA_RPC_URL="..."
@@ -154,8 +209,8 @@ npm run deploy:sepolia
 npm run export:contracts
 ```
 
-## Notes
+## 備註
 
-- `frontend/` 是 legacy 前端，不是主線
-- 主線資料庫為 PostgreSQL
-- 建議用 Docker 跑前後端與資料庫
+- `apps/web` 才是目前主線前端
+- `apps/web/Dockerfile` 用於 production build
+- `apps/web/Dockerfile.dev` 用於本地 Docker 開發

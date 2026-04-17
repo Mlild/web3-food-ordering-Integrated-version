@@ -22,7 +22,7 @@ func (m *mockOrderProposalRepo) CreateProposalWithCredit(memberID int64, title, 
 }
 
 func (m *mockOrderProposalRepo) DeleteProposalByCreator(proposalID, memberID int64) error { return nil }
-func (m *mockOrderProposalRepo) ListProposals() []*models.Proposal { return nil }
+func (m *mockOrderProposalRepo) ListProposals() []*models.Proposal                        { return nil }
 
 func (m *mockOrderProposalRepo) GetProposal(id int64) (*models.Proposal, error) {
 	return m.proposal, nil
@@ -162,6 +162,8 @@ func TestQuoteRejectsWinningMerchantWithoutMenu(t *testing.T) {
 		ID:             1,
 		Status:         "ordering",
 		ProposalDate:   time.Now().In(time.Local).Format("2006-01-02"),
+		VoteDeadline:   time.Now().Add(-30 * time.Minute),
+		OrderDeadline:  time.Now().Add(30 * time.Minute),
 		WinnerOptionID: 11,
 		Options: []*models.ProposalOption{
 			{ID: 11, MerchantID: "shop-empty", MerchantName: "空菜單店家"},
@@ -180,7 +182,7 @@ func TestQuoteRejectsWinningMerchantWithoutMenu(t *testing.T) {
 		nil,
 	)
 
-	_, err := svc.Quote(1, 1, map[string]int64{"item-a": 1})
+	_, err := svc.Quote(1, 1, map[string]int64{"item-a": 1}, false)
 	if err == nil {
 		t.Fatal("expected quote to fail when winning merchant has no menu")
 	}
@@ -194,6 +196,8 @@ func TestSignAllowsLocalProposalWithoutChainMapping(t *testing.T) {
 		ID:             7,
 		Status:         "ordering",
 		ProposalDate:   time.Now().In(time.Local).Format("2006-01-02"),
+		VoteDeadline:   time.Now().Add(-30 * time.Minute),
+		OrderDeadline:  time.Now().Add(30 * time.Minute),
 		WinnerOptionID: 11,
 		Options: []*models.ProposalOption{
 			{ID: 11, MerchantID: "shop-hotpot", MerchantName: "火鍋店"},
@@ -226,5 +230,41 @@ func TestSignAllowsLocalProposalWithoutChainMapping(t *testing.T) {
 	}
 	if sig.AmountWei != quote.SubtotalWei {
 		t.Fatalf("expected local amount %s to match quote subtotal %s", sig.AmountWei, quote.SubtotalWei)
+	}
+}
+
+func TestQuote_AllowsLateSyncAfterOrderStageDeadline(t *testing.T) {
+	proposal := &models.Proposal{
+		ID:             9,
+		Status:         "settled",
+		ProposalDate:   time.Now().Add(-24 * time.Hour).In(time.Local).Format("2006-01-02"),
+		VoteDeadline:   time.Now().Add(-30 * time.Minute),
+		OrderDeadline:  time.Now().Add(-time.Minute),
+		WinnerOptionID: 11,
+		Options: []*models.ProposalOption{
+			{ID: 11, MerchantID: "shop-hotpot", MerchantName: "火鍋店"},
+		},
+	}
+
+	svc := service.NewOrderService(
+		&mockOrderRepo{},
+		&mockOrderProposalRepo{proposal: proposal},
+		&mockOrderMerchantRepo{merchant: &models.Merchant{
+			ID:   "shop-hotpot",
+			Name: "火鍋店",
+			Menu: []*models.MenuItem{
+				{ID: "hotpot-set", Name: "火鍋套餐", PriceWei: 4200000000000000},
+			},
+		}},
+		newMockMemberRepo(),
+		nil,
+	)
+
+	quote, err := svc.Quote(9, 3, map[string]int64{"hotpot-set": 1}, true)
+	if err != nil {
+		t.Fatalf("expected late sync quote to succeed, got %v", err)
+	}
+	if quote == nil || quote.SubtotalWei == "" {
+		t.Fatal("expected quote details for late sync ordering")
 	}
 }

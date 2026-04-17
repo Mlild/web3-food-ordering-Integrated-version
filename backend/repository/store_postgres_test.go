@@ -410,6 +410,49 @@ func TestLocalProposalAwaitingSettlementIncludesRoundOrderTotals(t *testing.T) {
 	}
 }
 
+func TestGetProposalFinalizesLocalWinnerAfterVoteDeadlineEvenWhenProposalDateIsYesterday(t *testing.T) {
+	s := newTestPostgresStore(t)
+
+	aliceID := memberIDByEmailPG(t, s, "alice@example.com")
+	now := time.Now().UTC()
+	proposal, err := s.CreateProposal(
+		aliceID,
+		"跨日結算測試",
+		"",
+		"all",
+		"lunch",
+		now.Add(-24*time.Hour).In(time.Local).Format("2006-01-02"),
+		5,
+		"Alice",
+		now.Add(-90*time.Minute),
+		now.Add(-30*time.Minute),
+		now.Add(30*time.Minute),
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("create proposal: %v", err)
+	}
+
+	option, err := s.InsertProposalOption(proposal.ID, aliceID, "shop-hotpot", "火鍋店", "Alice", 0, false)
+	if err != nil {
+		t.Fatalf("insert proposal option: %v", err)
+	}
+	if err := s.RecordVote(proposal.ID, aliceID, option.ID, 1, 0, "Alice", false); err != nil {
+		t.Fatalf("record vote: %v", err)
+	}
+
+	proposal, err = s.GetProposal(proposal.ID)
+	if err != nil {
+		t.Fatalf("get proposal after vote deadline: %v", err)
+	}
+	if proposal.WinnerOptionID != option.ID {
+		t.Fatalf("expected winner option %d, got %d", option.ID, proposal.WinnerOptionID)
+	}
+	if proposal.Status != "ordering" {
+		t.Fatalf("expected ordering status after local winner finalization, got %s", proposal.Status)
+	}
+}
+
 func TestLocalProposalAutoSettlesAfterOrderingDeadline(t *testing.T) {
 	s := newTestPostgresStore(t)
 

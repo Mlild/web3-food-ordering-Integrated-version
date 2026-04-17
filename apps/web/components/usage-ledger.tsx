@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { fetchRegistrationInviteUsage, fetchUsage, type RegistrationInviteUsage, type UsageRecord } from "@/lib/api";
 import { formatWeiAsTwdEth } from "@/lib/currency";
 
-type LedgerTab = "usage" | "proposal-coupon" | "vote-coupon" | "create-order-coupon" | "invite";
+export type LedgerTab = "usage" | "proposal-coupon" | "vote-coupon" | "create-order-coupon" | "invite";
 
 export function UsageLedger({ initialTab = "usage" }: { initialTab?: LedgerTab }) {
   const [items, setItems] = useState<UsageRecord[]>([]);
@@ -36,10 +36,14 @@ export function UsageLedger({ initialTab = "usage" }: { initialTab?: LedgerTab }
     refresh();
   }, []);
 
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
+
   const filteredItems = items.filter((item) => {
-    if (tab === "proposal-coupon") return item.assetType === "proposal_ticket";
-    if (tab === "vote-coupon") return item.assetType === "vote_ticket";
-    if (tab === "create-order-coupon") return item.assetType === "create_order_ticket";
+    if (tab === "proposal-coupon") return item.assetType === "proposal_ticket" || item.assetType === "proposal_coupon";
+    if (tab === "vote-coupon") return item.assetType === "vote_ticket" || item.assetType === "vote_coupon";
+    if (tab === "create-order-coupon") return item.assetType === "create_order_ticket" || item.assetType === "create_order_coupon";
     if (tab === "usage") return true;
     return false;
   });
@@ -50,7 +54,6 @@ export function UsageLedger({ initialTab = "usage" }: { initialTab?: LedgerTab }
         <div className="meal-section-heading max-w-none">
           <p className="meal-kicker">Usage ledger</p>
           <h1>使用紀錄</h1>
-          <p>查看三種優惠券、鏈上付款與個人邀請碼使用紀錄。</p>
         </div>
         <Button variant="secondary" onClick={refresh} disabled={loading}>
           {loading ? "更新中..." : "重新整理"}
@@ -152,6 +155,9 @@ function humanizeAction(action: string) {
     claim_faucet: "舊版獎勵紀錄",
     claim_ticket_reward: "領取提案優惠券",
     claim_order_ticket_reward: "領取建立訂單優惠券",
+    claim_proposal_coupon: "領取提案優惠券",
+    claim_vote_coupon: "領取投票優惠券",
+    claim_create_order_coupon: "領取建立訂單優惠券",
     vote_coupon: "使用投票優惠券",
     proposal_coupon: "使用提案優惠券",
     create_order_coupon: "使用建立訂單優惠券",
@@ -164,20 +170,23 @@ function formatAssetLabel(assetType: string) {
   if (assetType === "token") return "舊版資產紀錄";
   if (assetType === "native") return "ETH";
   if (assetType === "proposal_ticket") return "提案優惠券";
+  if (assetType === "proposal_coupon") return "提案優惠券";
   if (assetType === "vote_ticket") return "投票優惠券";
+  if (assetType === "vote_coupon") return "投票優惠券";
   if (assetType === "create_order_ticket") return "建立訂單優惠券";
+  if (assetType === "create_order_coupon") return "建立訂單優惠券";
   return assetType || "";
 }
 
 function formatAmount(item: UsageRecord) {
   const prefix = item.direction === "credit" ? "+" : "-";
-  if (item.assetType === "proposal_ticket") {
+  if (item.assetType === "proposal_ticket" || item.assetType === "proposal_coupon") {
     return `${prefix}${item.amount} 張提案優惠券`;
   }
-  if (item.assetType === "vote_ticket") {
+  if (item.assetType === "vote_ticket" || item.assetType === "vote_coupon") {
     return `${prefix}${item.amount} 張投票優惠券`;
   }
-  if (item.assetType === "create_order_ticket") {
+  if (item.assetType === "create_order_ticket" || item.assetType === "create_order_coupon") {
     return `${prefix}${item.amount} 張建立訂單優惠券`;
   }
   if (item.assetType === "native") {

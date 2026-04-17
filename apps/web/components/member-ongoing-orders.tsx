@@ -53,9 +53,9 @@ export function MemberOngoingOrdersView() {
     return proposals.filter((proposal) => stageKeyForProposal(proposal) !== null);
   }, [proposals, stageKeyForProposal]);
   const sections = [
-    { key: "proposing", label: "店家提案階段", href: "/member/ordering/proposals" },
-    { key: "voting", label: "投票階段", href: "/member/ordering/voting" },
-    { key: "ordering", label: "點餐階段", href: "/member/ordering/ordering" }
+    { key: "proposing", label: "店家提案階段", href: "/member/ordering/proposals", actionLabel: "我要提案" },
+    { key: "voting", label: "投票階段", href: "/member/ordering/voting", actionLabel: "我要投票" },
+    { key: "ordering", label: "點餐階段", href: "/member/ordering/ordering", actionLabel: "我要點餐" }
   ] as const;
 
   if (loading) return <div className="meal-panel p-8">正在載入成立中訂單...</div>;
@@ -104,7 +104,9 @@ export function MemberOngoingOrdersView() {
                             : `剩餘點餐時間：${formatCountdown(proposal.orderDeadline, now)}`}
                       </p>
                     </div>
-                    <Link href={`${section.href}/${proposal.id}`} className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-primary">詳細資訊</Link>
+                    <Link href={`${section.href}/${proposal.id}`} className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-primary">
+                      {section.actionLabel}
+                    </Link>
                   </div>
                 </div>
               )) : <p className="text-sm text-muted-foreground">目前沒有這個階段的成立中訂單。</p>}
