@@ -243,16 +243,19 @@ export function mergeMerchantReviews(detailReviews: MerchantReview[], demoCommen
 }
 
 export function getMerchantBuildingInfo(merchant: Merchant, detailReviews?: MerchantReview[]) {
-  const demoComments = getMerchantComments(merchant.id);
-  const allReviewCount = (merchant.reviewCount || 0) + demoComments.length;
-  const combinedRatings = [
-    ...(detailReviews || []).map((item) => item.rating),
-    ...demoComments.map((item) => item.rating)
-  ];
+  const allReviewCount = detailReviews?.length ?? (merchant.reviewCount || 0);
+  const combinedRatings = (detailReviews || []).map((item) => item.rating);
   const averageRating = combinedRatings.length
     ? combinedRatings.reduce((sum, rating) => sum + rating, 0) / combinedRatings.length
     : merchant.averageRating || 0;
-  const categories = new Set(demoComments.map((comment) => comment.category));
+  const categories = new Set(
+    (detailReviews || [])
+      .map((item) => {
+        const matched = item.comment.match(/^【([^】]+)】/);
+        return matched?.[1]?.trim() || "";
+      })
+      .filter(Boolean)
+  );
   const score = allReviewCount * 5 + Math.round(averageRating * 4) + categories.size * 3;
 
   let floors = 1;

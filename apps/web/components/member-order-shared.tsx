@@ -6,14 +6,7 @@ import { type ReactNode, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { type Order } from "@/lib/api";
-
-export function formatWei(value: string | number) {
-  const amount = BigInt(typeof value === "number" ? value : value || "0");
-  const integer = amount / 10n ** 18n;
-  const fraction = amount % 10n ** 18n;
-  const fractionText = fraction.toString().padStart(18, "0").slice(0, 4).replace(/0+$/, "");
-  return `${integer.toString()}${fractionText ? `.${fractionText}` : ""} ETH`;
-}
+import { formatWeiAsTwdEth } from "@/lib/currency";
 
 export function formatOrderStatus(status: string) {
   switch (status) {
@@ -40,7 +33,7 @@ export function getOrderDisplayTitle(order: Order) {
   return order.merchantName || order.merchantId || `訂單 #${order.id}`;
 }
 
-function orderCreatorName(order: Order) {
+export function getOrderCreatorName(order: Pick<Order, "createdByName" | "memberName">) {
   return order.createdByName?.trim() || order.memberName?.trim() || "未知";
 }
 
@@ -84,13 +77,13 @@ export function OrderSummaryCard({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="font-bold">{getOrderDisplayTitle(order)}</p>
-          <p className="mt-2 text-sm text-muted-foreground">訂單建立者：{orderCreatorName(order)}</p>
+          <p className="mt-2 text-sm text-muted-foreground">訂單建立者：{getOrderCreatorName(order)}</p>
           <p className="mt-2 text-sm text-muted-foreground">店家：{order.merchantName || order.merchantId}</p>
           <p className="mt-1 text-sm text-muted-foreground">建立時間：{new Date(order.createdAt).toLocaleString("zh-TW")}</p>
           <p className="mt-1 text-sm text-muted-foreground">狀態：{formatOrderStatus(order.status)}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <p className="text-base font-semibold">{formatWei(order.amountWei)}</p>
+          <p className="text-base font-semibold">{formatWeiAsTwdEth(order.amountWei)}</p>
           <Button asChild variant="secondary">
             <Link href={detailHref}>查看詳細資訊</Link>
           </Button>
@@ -141,10 +134,10 @@ export function OrderDetailPanel({
         <div className="meal-panel p-8">
           <p className="meal-kicker">Summary</p>
           <div className="mt-6 space-y-4 text-sm">
-            <InfoRow label="訂單建立者" value={orderCreatorName(order)} />
+            <InfoRow label="訂單建立者" value={getOrderCreatorName(order)} />
             <InfoRow label="訂購會員" value={order.memberName} />
             <InfoRow label="店家" value={order.merchantName || order.merchantId} />
-            <InfoRow label="訂單金額" value={formatWei(order.amountWei)} />
+            <InfoRow label="訂單金額" value={formatWeiAsTwdEth(order.amountWei)} />
             <div className="rounded-[1.2rem] border border-border bg-background/70 p-4">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-muted-foreground">目前狀態</p>
               <p className="mt-2 text-foreground">{formatOrderStatus(order.status)}</p>
@@ -194,7 +187,7 @@ export function OrderDetailPanel({
                   </div>
                   <div className="text-right">
                     <p className="font-semibold">x{item.quantity}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{formatWei(item.priceWei)}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{formatWeiAsTwdEth(item.priceWei)}</p>
                   </div>
                 </div>
               </div>

@@ -14,14 +14,7 @@ import {
   type Order
 } from "@/lib/api";
 import { toFriendlyWalletError } from "@/lib/chain";
-
-function formatWei(value: string | number) {
-  const amount = BigInt(typeof value === "number" ? value : value || "0");
-  const integer = amount / 10n ** 18n;
-  const fraction = amount % 10n ** 18n;
-  const fractionText = fraction.toString().padStart(18, "0").slice(0, 4).replace(/0+$/, "");
-  return `${integer.toString()}${fractionText ? `.${fractionText}` : ""} ETH`;
-}
+import { formatWeiAsTwdEth } from "@/lib/currency";
 
 export function MerchantOrderDetail({ orderId }: { orderId: number }) {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -146,7 +139,7 @@ export function MerchantOrderDetail({ orderId }: { orderId: number }) {
             <div className="mt-6 space-y-4 text-sm">
             <InfoRow label="訂單建立者" value={(order.createdByName || order.memberName || "").trim() || "未知"} />
             <InfoRow label="參與會員數" value={`${aggregate.memberCount} 位`} />
-            <InfoRow label="整筆訂單金額" value={formatWei(aggregate.amountWei.toString())} />
+            <InfoRow label="整筆訂單金額" value={formatWeiAsTwdEth(aggregate.amountWei.toString())} />
             <div className="rounded-[1.2rem] border border-border bg-background/70 p-4">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-muted-foreground">目前狀態</p>
               <p className="mt-2 text-foreground">{formatAggregateOrderStatus(aggregate.status)}</p>
@@ -188,14 +181,14 @@ export function MerchantOrderDetail({ orderId }: { orderId: number }) {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="font-semibold">{memberOrder.memberName}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{formatOrderStatus(memberOrder.status)} · {formatWei(memberOrder.amountWei)}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{formatOrderStatus(memberOrder.status)} · {formatWeiAsTwdEth(memberOrder.amountWei)}</p>
                   </div>
                 </div>
                 <div className="mt-4 space-y-2">
                   {memberOrder.items.map((item) => (
                     <div key={`${memberOrder.id}-${item.menuItemId}`} className="flex items-center justify-between gap-3 text-sm">
                       <span>{item.name} x{item.quantity}</span>
-                      <span className="text-muted-foreground">{formatWei((BigInt(item.priceWei) * BigInt(item.quantity)).toString())}</span>
+                      <span className="text-muted-foreground">{formatWeiAsTwdEth((BigInt(item.priceWei) * BigInt(item.quantity)).toString())}</span>
                     </div>
                   ))}
                 </div>

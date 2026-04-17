@@ -114,8 +114,8 @@ func (s *ProposalService) Delete(proposalID, memberID int64) error {
 	if err != nil {
 		return err
 	}
-	if !isCurrentProposalDay(proposal.ProposalDate) {
-		return errors.New("proposal expired for today")
+	if !isProposalPhaseOpen(proposal, false) {
+		return errors.New("proposal is no longer in proposing stage")
 	}
 	if proposal.Status != "proposing" {
 		return errors.New("only proposing rounds can be deleted")
@@ -137,13 +137,13 @@ func (s *ProposalService) Delete(proposalID, memberID int64) error {
 	return s.proposals.DeleteProposalByCreator(proposalID, memberID)
 }
 
-func (s *ProposalService) AddOption(proposalID, memberID int64, merchantID string, useProposalTicket bool) (*models.ProposalOption, error) {
+func (s *ProposalService) AddOption(proposalID, memberID int64, merchantID string, useProposalTicket, allowLateSync bool) (*models.ProposalOption, error) {
 	proposal, err := s.proposals.GetProposal(proposalID)
 	if err != nil {
 		return nil, err
 	}
-	if !isCurrentProposalDay(proposal.ProposalDate) {
-		return nil, errors.New("proposal expired for today")
+	if !isProposalPhaseOpen(proposal, allowLateSync) {
+		return nil, errors.New("proposal is no longer in proposing stage")
 	}
 	if proposal.MaxOptions > 0 && int64(len(proposal.Options)) >= proposal.MaxOptions {
 		return nil, errors.New("proposal option limit reached")
@@ -187,21 +187,19 @@ func (s *ProposalService) AddOption(proposalID, memberID int64, merchantID strin
 	return opt, nil
 }
 
-func (s *ProposalService) Vote(proposalID, memberID, optionID, voteCount int64, useVoteTicket bool) (*models.Proposal, error) {
+func (s *ProposalService) Vote(proposalID, memberID, optionID, voteCount int64, useVoteTicket, allowLateSync bool) (*models.Proposal, error) {
 	proposal, err := s.proposals.GetProposal(proposalID)
 	if err != nil {
 		return nil, err
 	}
-	if !isCurrentProposalDay(proposal.ProposalDate) {
-		return nil, errors.New("proposal expired for today")
-	}
-	if proposal.Status != "voting" {
+	if !isVotingPhaseOpen(proposal, allowLateSync) {
 		return nil, errors.New("proposal is not in voting stage")
 	}
 	member, err := s.members.MemberByID(memberID)
 	if err != nil {
 		return nil, err
 	}
+	voteCount = normalizedVoteCount(voteCount, useVoteTicket)
 	if voteCount <= 0 {
 		return nil, errors.New("voteCount must be greater than zero")
 	}
@@ -247,6 +245,7 @@ func (s *ProposalService) QuoteOption() (map[string]int64, error) {
 }
 
 func (s *ProposalService) QuoteVote(voteCount int64, useVoteTicket bool) (map[string]int64, error) {
+	voteCount = normalizedVoteCount(voteCount, useVoteTicket)
 	if voteCount <= 0 {
 		return nil, errors.New("voteCount must be greater than zero")
 	}
@@ -270,6 +269,52 @@ func (s *ProposalService) QuoteVote(voteCount int64, useVoteTicket bool) (map[st
 		"voteFeeWei":      params.VoteFeeWei,
 		"discountedVotes": discountedVotes,
 	}, nil
+}
+
+func normalizedVoteCount(voteCount int64, useVoteTicket bool) int64 {
+	if voteCount <= 0 && useVoteTicket {
+		return 1
+	}
+	return voteCount
+}
+
+func isProposalPhaseOpen(proposal *models.Proposal, allowLateSync bool) bool {
+	if proposal == nil {
+		return false
+	}
+	now := time.Now().UTC()
+	if now.Before(proposal.ProposalDeadline) {
+		return true
+	}
+	return allowLateSync && !proposal.ProposalDeadline.IsZero()
+}
+
+func isVotingPhaseOpen(proposal *models.Proposal, allowLateSync bool) bool {
+	if proposal == nil {
+		return false
+	}
+	now := time.Now().UTC()
+	if now.Before(proposal.ProposalDeadline) {
+		return false
+	}
+	if now.Before(proposal.VoteDeadline) {
+		return true
+	}
+	return allowLateSync && !proposal.VoteDeadline.IsZero()
+}
+
+func isOrderingPhaseOpen(proposal *models.Proposal, allowLateSync bool) bool {
+	if proposal == nil {
+		return false
+	}
+	now := time.Now().UTC()
+	if now.Before(proposal.VoteDeadline) {
+		return false
+	}
+	if now.Before(proposal.OrderDeadline) {
+		return true
+	}
+	return allowLateSync && !proposal.OrderDeadline.IsZero()
 }
 
 func (s *ProposalService) FinalizeSettlement(proposalID int64) (*models.Proposal, error) {
@@ -309,15 +354,6 @@ func resolveProposalSchedule(proposalDate string, now time.Time) (string, time.T
 	}
 	base := time.Date(day.Year(), day.Month(), day.Day(), nowLocal.Hour(), nowLocal.Minute(), 0, 0, location)
 	return proposalDate, base.UTC(), nil
-}
-
-// isCurrentProposalDay checks that the proposal is scheduled for today in local time.
-func isCurrentProposalDay(proposalDate string) bool {
-	if proposalDate == "" {
-		return false
-	}
-	now := time.Now().In(proposalBusinessLocation()).Format("2006-01-02")
-	return proposalDate == now
 }
 
 func proposalBusinessLocation() *time.Location {

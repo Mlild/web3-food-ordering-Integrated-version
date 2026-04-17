@@ -28,15 +28,12 @@ func NewOrderService(orders repository.OrderRepo, proposals repository.ProposalR
 	return &OrderService{orders: orders, proposals: proposals, merchants: merchants, members: members, chain: chain}
 }
 
-func (s *OrderService) Quote(proposalID, memberID int64, items map[string]int64) (*models.OrderQuote, error) {
+func (s *OrderService) Quote(proposalID, memberID int64, items map[string]int64, allowLateSync bool) (*models.OrderQuote, error) {
 	proposal, err := s.proposals.GetProposal(proposalID)
 	if err != nil {
 		return nil, err
 	}
-	if !isCurrentProposalDay(proposal.ProposalDate) {
-		return nil, errors.New("proposal expired for today")
-	}
-	if proposal.Status != "ordering" {
+	if !isOrderingPhaseOpen(proposal, allowLateSync) {
 		return nil, errors.New("proposal is not in ordering stage")
 	}
 	var winner *models.ProposalOption
@@ -96,7 +93,7 @@ func (s *OrderService) Sign(proposalID, memberID int64, items map[string]int64, 
 	if err != nil {
 		return nil, nil, err
 	}
-	quote, err := s.Quote(proposalID, memberID, items)
+	quote, err := s.Quote(proposalID, memberID, items, false)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -123,8 +120,8 @@ func (s *OrderService) Sign(proposalID, memberID int64, items map[string]int64, 
 	return quote, sig, nil
 }
 
-func (s *OrderService) SaveSignedOrder(proposalID, memberID int64, items map[string]int64, signature *models.OrderSignature, escrowOrderID *int64) (*models.Order, error) {
-	quote, err := s.Quote(proposalID, memberID, items)
+func (s *OrderService) SaveSignedOrder(proposalID, memberID int64, items map[string]int64, signature *models.OrderSignature, escrowOrderID *int64, allowLateSync bool) (*models.Order, error) {
+	quote, err := s.Quote(proposalID, memberID, items, allowLateSync)
 	if err != nil {
 		return nil, err
 	}

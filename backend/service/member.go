@@ -33,11 +33,20 @@ var (
 
 // MemberService owns all business rules for members.
 type MemberService struct {
-	repo repository.MemberRepo
+	repo  repository.MemberRepo
+	usage usageLogger
+}
+
+type usageLogger interface {
+	LogUsage(memberID, proposalID int64, action, assetType, direction, amount, note, reference string) error
 }
 
 func NewMemberService(repo repository.MemberRepo) *MemberService {
-	return &MemberService{repo: repo}
+	var usage usageLogger
+	if usageRepo, ok := repo.(usageLogger); ok {
+		usage = usageRepo
+	}
+	return &MemberService{repo: repo, usage: usage}
 }
 
 func (s *MemberService) Register(email, password, displayName string) (*models.Member, string, error) {
@@ -266,6 +275,23 @@ func (s *MemberService) ClaimTickets(memberID int64) (*models.Member, int64, int
 	proposalTickets, voteTickets, createOrderTickets, err := s.repo.ClaimTickets(memberID)
 	if err != nil {
 		return nil, 0, 0, 0, err
+	}
+	if s.usage != nil {
+		if proposalTickets > 0 {
+			if logErr := s.usage.LogUsage(memberID, 0, "claim_proposal_coupon", "proposal_coupon", "credit", fmt.Sprintf("%d", proposalTickets), "領取提案優惠券", ""); logErr != nil {
+				return nil, 0, 0, 0, logErr
+			}
+		}
+		if voteTickets > 0 {
+			if logErr := s.usage.LogUsage(memberID, 0, "claim_vote_coupon", "vote_coupon", "credit", fmt.Sprintf("%d", voteTickets), "領取投票優惠券", ""); logErr != nil {
+				return nil, 0, 0, 0, logErr
+			}
+		}
+		if createOrderTickets > 0 {
+			if logErr := s.usage.LogUsage(memberID, 0, "claim_create_order_coupon", "create_order_coupon", "credit", fmt.Sprintf("%d", createOrderTickets), "領取建立訂單優惠券", ""); logErr != nil {
+				return nil, 0, 0, 0, logErr
+			}
+		}
 	}
 	member, err := s.repo.MemberByID(memberID)
 	if err != nil {

@@ -32,6 +32,7 @@ import {
   voteProposal
 } from "@/lib/api";
 import { ensureSepoliaClients, getWalletBalanceWei, isUsableContractAddress } from "@/lib/chain";
+import { formatWeiAsTwdEth } from "@/lib/currency";
 
 type GovernanceState = {
   member: Member | null;
@@ -44,7 +45,6 @@ type GovernanceState = {
 type GovernanceTab = "proposing" | "voting" | "ordering";
 type WorkflowStage = "create" | "proposal" | "voting" | "ordering" | "submitted";
 
-const APPROX_TWD_PER_ETH = 120000;
 const stageMeta: Record<WorkflowStage, { title: string; body: string }> = {
   create: {
     title: "建立訂單",
@@ -954,25 +954,8 @@ function formatDateTime(value: string) {
   return date.toLocaleString("zh-TW");
 }
 
-function weiToEthNumber(value: string | number | bigint) {
-  const raw = typeof value === "bigint" ? Number(value) : typeof value === "number" ? value : Number(value || 0);
-  if (!Number.isFinite(raw) || raw <= 0) return 0;
-  return raw / 1e18;
-}
-
-function formatEth(value: string | number | bigint) {
-  const eth = weiToEthNumber(value);
-  if (eth === 0) return "0 ETH";
-  return `${eth.toFixed(4)} ETH`;
-}
-
-function formatApproxTWD(value: string | number | bigint) {
-  const amount = Math.round(weiToEthNumber(value) * APPROX_TWD_PER_ETH);
-  return `約 NT$${amount.toLocaleString("zh-TW")}`;
-}
-
 function formatWeiFriendly(value: string | number | bigint) {
-  return `${formatEth(value)} / ${formatApproxTWD(value)}`;
+  return formatWeiAsTwdEth(value);
 }
 
 function formatMenuItemSubtotal(priceWei: string | number | bigint, quantity: number) {

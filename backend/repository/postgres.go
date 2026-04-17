@@ -1989,6 +1989,7 @@ func (s *PostgresStore) ListMerchants() ([]*models.Merchant, error) {
 			merchant.AverageRating = avg
 			merchant.ReviewCount = count
 		}
+		merchant.Building = s.merchantBuildingSummary(ctx, merchant.ID, merchant.AverageRating, merchant.ReviewCount)
 	}
 	return merchants, nil
 }
@@ -2339,6 +2340,7 @@ func (s *PostgresStore) merchantFromModel(ctx context.Context, merchant *postgre
 		result.AverageRating = avg
 		result.ReviewCount = count
 	}
+	result.Building = s.merchantBuildingSummary(ctx, merchant.ID, result.AverageRating, result.ReviewCount)
 	return result, nil
 }
 
@@ -2356,6 +2358,73 @@ func (s *PostgresStore) merchantReviewSummary(ctx context.Context, merchantID st
 		return 0, 0, err
 	}
 	return row.Average, row.Count, nil
+}
+
+func (s *PostgresStore) merchantBuildingSummary(ctx context.Context, merchantID string, averageRating float64, reviewCount int64) *models.MerchantBuilding {
+	menuItemCount, err := s.merchantMenuItemCount(ctx, merchantID)
+	if err != nil {
+		menuItemCount = 0
+	}
+	completedOrderCount, err := s.merchantCompletedOrderCount(ctx, merchantID)
+	if err != nil {
+		completedOrderCount = 0
+	}
+	categoryCount, err := s.merchantReviewCategoryCount(ctx, merchantID)
+	if err != nil {
+		categoryCount = 0
+	}
+	return models.BuildMerchantBuilding(reviewCount, averageRating, categoryCount, menuItemCount, completedOrderCount)
+}
+
+func (s *PostgresStore) merchantMenuItemCount(ctx context.Context, merchantID string) (int64, error) {
+	var count int64
+	err := s.db.WithContext(ctx).
+		Model(&postgresMenuItemModel{}).
+		Where("merchant_id = ?", strings.TrimSpace(merchantID)).
+		Count(&count).Error
+	return count, err
+}
+
+func (s *PostgresStore) merchantCompletedOrderCount(ctx context.Context, merchantID string) (int64, error) {
+	var count int64
+	err := s.db.WithContext(ctx).
+		Model(&postgresOrderModel{}).
+		Where("merchant_id = ? AND status IN ?", strings.TrimSpace(merchantID), []string{"merchant_completed", "ready_for_payout", "platform_paid"}).
+		Count(&count).Error
+	return count, err
+}
+
+func (s *PostgresStore) merchantReviewCategoryCount(ctx context.Context, merchantID string) (int64, error) {
+	var rows []struct {
+		Comment string
+	}
+	if err := s.db.WithContext(ctx).
+		Select("comment").
+		Where("merchant_id = ?", strings.TrimSpace(merchantID)).
+		Find(&rows).Error; err != nil {
+		return 0, err
+	}
+	categories := make(map[string]struct{})
+	for _, row := range rows {
+		category := reviewCategoryFromComment(row.Comment)
+		if category == "" {
+			continue
+		}
+		categories[category] = struct{}{}
+	}
+	return int64(len(categories)), nil
+}
+
+func reviewCategoryFromComment(comment string) string {
+	text := strings.TrimSpace(comment)
+	if !strings.HasPrefix(text, "【") {
+		return ""
+	}
+	end := strings.Index(text, "】")
+	if end <= 1 {
+		return ""
+	}
+	return strings.TrimSpace(text[len("【"):end])
 }
 
 func derefTime(value *time.Time) time.Time {
@@ -3831,13 +3900,18 @@ func (s *PostgresStore) refreshProposalState(ctx context.Context, proposalID int
 		if err := tx.First(&proposal, "id = ?", proposalID).Error; err != nil {
 			return err
 		}
+		var chainMapCount int64
+		if err := tx.Model(&postgresProposalChainMapModel{}).Where("local_proposal_id = ?", proposalID).Count(&chainMapCount).Error; err != nil {
+			return err
+		}
+		isChainProposal := chainMapCount > 0
 		var optCount int64
 		if err := tx.Model(&postgresProposalOptionModel{}).Where("proposal_id = ?", proposalID).Count(&optCount).Error; err != nil {
 			return err
 		}
 
 		voteEnd := proposal.VoteDeadline.UTC()
-		if isCurrentProposalDay(proposal.ProposalDate) && proposal.WinnerOptionID == 0 && !time.Now().UTC().Before(voteEnd) && optCount > 0 {
+		if !isChainProposal && proposal.WinnerOptionID == 0 && !time.Now().UTC().Before(voteEnd) && optCount > 0 {
 			var totalVotes int64
 			if err := tx.Model(&postgresVoteModel{}).Where("proposal_id = ?", proposalID).Select("COALESCE(SUM(vote_count), 0)").Scan(&totalVotes).Error; err != nil {
 				return err
@@ -3860,6 +3934,13 @@ func (s *PostgresStore) refreshProposalState(ctx context.Context, proposalID int
 		}
 
 		propView := &models.Proposal{
+			ChainProposalID: func() *int64 {
+				if isChainProposal {
+					value := int64(1)
+					return &value
+				}
+				return nil
+			}(),
 			ProposalDate:     proposal.ProposalDate,
 			ProposalDeadline: proposal.ProposalDeadline.UTC(),
 			VoteDeadline:     voteEnd,

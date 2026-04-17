@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { fetchGovernanceParams, updateGovernanceParams, type GovernanceParams } from "@/lib/api";
+import { formatWeiAsTwdEth } from "@/lib/currency";
 
 type NumericGovernanceKey = {
   [K in keyof GovernanceParams]: GovernanceParams[K] extends number | undefined ? K : never;
@@ -253,7 +254,7 @@ export function AdminGovernanceSettings() {
                     />
                     <span className="text-xs leading-6 text-muted-foreground">
                       {field.help}
-                      {isFeeField ? ` 目前約 ${formatWeiToEthString(Number(params[field.key as keyof GovernanceParams] ?? 0))} ETH。` : ""}
+                      {isFeeField ? ` 目前顯示 ${formatWeiAsTwdEth(Number(params[field.key as keyof GovernanceParams] ?? 0))}。` : ""}
                     </span>
                     {durationConfig ? (
                       <div className="mt-2 rounded-[1rem] border border-border/70 bg-secondary/30 p-3">

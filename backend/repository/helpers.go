@@ -45,16 +45,7 @@ func deriveStatus(proposal *models.Proposal) string {
 	if proposal.RewardsApplied && proposal.TotalVoteCount == 0 && proposal.FailedReason == "no_votes_cast" {
 		return "failed"
 	}
-	switch compareProposalDate(proposal.ProposalDate) {
-	case -1:
-		if proposal.RewardsApplied {
-			if proposal.FailedReason == "no_votes_cast" {
-				return "failed"
-			}
-			return "settled"
-		}
-		return "settled"
-	case 1:
+	if compareProposalDate(proposal.ProposalDate) == 1 && now.Before(proposal.ProposalDeadline) {
 		return "upcoming"
 	}
 	switch {
@@ -66,10 +57,19 @@ func deriveStatus(proposal *models.Proposal) string {
 		if proposal.FailedReason == "no_votes_cast" {
 			return "failed"
 		}
+		if proposal.ChainProposalID != nil && proposal.WinnerOptionID == 0 {
+			return "awaiting_finalization"
+		}
 		return "ordering"
 	default:
 		if proposal.FailedReason == "no_votes_cast" {
 			return "failed"
+		}
+		if proposal.ChainProposalID != nil && proposal.WinnerOptionID == 0 && !proposal.RewardsApplied {
+			return "awaiting_finalization"
+		}
+		if proposal.ChainProposalID != nil && !proposal.RewardsApplied {
+			return "awaiting_settlement"
 		}
 		if proposal.RewardsApplied || proposal.WinnerOptionID > 0 {
 			return "settled"
@@ -105,10 +105,10 @@ func shouldAutoSettleLocalProposal(proposal *models.Proposal) bool {
 	if proposal == nil || proposal.RewardsApplied {
 		return false
 	}
-	if !isCurrentProposalDay(proposal.ProposalDate) {
+	if proposal.ChainProposalID != nil {
 		return false
 	}
-	return !time.Now().UTC().Before(proposal.VoteDeadline)
+	return !time.Now().UTC().Before(proposal.OrderDeadline)
 }
 
 func shouldCountOrderInRoundTotal(status string) bool {

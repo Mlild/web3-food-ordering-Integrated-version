@@ -15,6 +15,7 @@ type mockMemberRepo struct {
 	members    map[string]*models.Member
 	sessions   map[string]int64
 	challenges map[string]*models.WalletAuthChallenge
+	usageLogs  []*models.UsageRecord
 	nextID     int64
 }
 
@@ -76,7 +77,9 @@ func (m *mockMemberRepo) MemberByID(id int64) (*models.Member, error) {
 	}
 	return nil, errors.New("member not found")
 }
-func (m *mockMemberRepo) ListMemberOrders(memberID int64) ([]*models.Order, error) { return []*models.Order{}, nil }
+func (m *mockMemberRepo) ListMemberOrders(memberID int64) ([]*models.Order, error) {
+	return []*models.Order{}, nil
+}
 func (m *mockMemberRepo) MemberReviewCount(memberID int64) (int64, error) { return 0, nil }
 func (m *mockMemberRepo) ListRegistrationInviteUsages(memberID int64) ([]*models.RegistrationInviteUsage, error) {
 	return []*models.RegistrationInviteUsage{}, nil
@@ -159,6 +162,19 @@ func (m *mockMemberRepo) GrantDailyLoginProposalTicket(memberID int64, now time.
 	}
 	return false, errors.New("member not found")
 }
+func (m *mockMemberRepo) LogUsage(memberID, proposalID int64, action, assetType, direction, amount, note, reference string) error {
+	m.usageLogs = append(m.usageLogs, &models.UsageRecord{
+		MemberID:   memberID,
+		ProposalID: proposalID,
+		Action:     action,
+		AssetType:  assetType,
+		Direction:  direction,
+		Amount:     amount,
+		Note:       note,
+		Reference:  reference,
+	})
+	return nil
+}
 func (m *mockMemberRepo) SaveWalletAuthChallenge(walletAddress, nonce, message string, expiresAt time.Time) error {
 	m.challenges[walletAddress] = &models.WalletAuthChallenge{
 		WalletAddress: walletAddress,
@@ -180,7 +196,9 @@ func (m *mockMemberRepo) DeleteWalletAuthChallenge(walletAddress string) error {
 	return nil
 }
 func (m *mockMemberRepo) RawLeaderboard() ([]*models.LeaderboardEntry, error) { return nil, nil }
-func (m *mockMemberRepo) MemberStats(memberID int64) (int64, int64, int64, error) { return 0, 0, 0, nil }
+func (m *mockMemberRepo) MemberStats(memberID int64) (int64, int64, int64, error) {
+	return 0, 0, 0, nil
+}
 
 func TestRegister_Success(t *testing.T) {
 	repo := newMockMemberRepo()
@@ -245,6 +263,50 @@ func TestLogin_Success(t *testing.T) {
 	}
 	if member.Email != "a@b.com" {
 		t.Errorf("unexpected email: %q", member.Email)
+	}
+}
+
+func TestClaimTickets_LogsCouponUsage(t *testing.T) {
+	repo := newMockMemberRepo()
+	svc := service.NewMemberService(repo)
+
+	memberID, err := repo.CreateMember("claim@example.com", "", "Claim User", false, 0, "")
+	if err != nil {
+		t.Fatalf("create member: %v", err)
+	}
+	member, err := repo.MemberByID(memberID)
+	if err != nil {
+		t.Fatalf("member by id: %v", err)
+	}
+	member.ClaimableProposalTickets = 2
+	member.ClaimableVoteTickets = 3
+	member.ClaimableCreateOrderTickets = 1
+
+	_, proposalTickets, voteTickets, createOrderTickets, err := svc.ClaimTickets(memberID)
+	if err != nil {
+		t.Fatalf("claim tickets: %v", err)
+	}
+	if proposalTickets != 2 || voteTickets != 3 || createOrderTickets != 1 {
+		t.Fatalf("unexpected claimed counts: %d %d %d", proposalTickets, voteTickets, createOrderTickets)
+	}
+	if len(repo.usageLogs) != 3 {
+		t.Fatalf("expected 3 usage logs, got %d", len(repo.usageLogs))
+	}
+
+	expected := []struct {
+		action    string
+		assetType string
+		amount    string
+	}{
+		{action: "claim_proposal_coupon", assetType: "proposal_coupon", amount: "2"},
+		{action: "claim_vote_coupon", assetType: "vote_coupon", amount: "3"},
+		{action: "claim_create_order_coupon", assetType: "create_order_coupon", amount: "1"},
+	}
+	for index, item := range expected {
+		record := repo.usageLogs[index]
+		if record.Action != item.action || record.AssetType != item.assetType || record.Amount != item.amount || record.Direction != "credit" {
+			t.Fatalf("unexpected usage log %d: %+v", index, record)
+		}
 	}
 }
 

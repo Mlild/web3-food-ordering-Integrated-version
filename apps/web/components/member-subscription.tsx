@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { cancelSubscription, fetchContractInfo, fetchMe, fetchPublicGovernanceParams, registerPendingTransaction, syncSubscription, type ContractInfo, type GovernanceParams, type Member } from "@/lib/api";
 import { isUsableContractAddress, sendNativePayment, toFriendlyWalletError } from "@/lib/chain";
+import { formatWeiAsTwdEth } from "@/lib/currency";
 
 const SUBSCRIPTION_SYNC_KEY = "member-subscription-pending-sync";
 
@@ -137,26 +138,18 @@ export function MemberSubscription() {
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         <Stat label="目前狀態" value={member.subscriptionActive ? "已訂閱" : "尚未訂閱成為會員"} />
         <Stat label="到期時間" value={member.subscriptionExpiresAt ? new Date(member.subscriptionExpiresAt).toLocaleString("zh-TW") : "尚未開通"} />
-        <Stat label="費用" value={governanceParams ? `${formatWeiToEth(governanceParams.subscriptionFeeWei)} ETH / ${governanceParams.subscriptionDurationDays} 天` : "鏈上月訂閱"} />
+        <Stat label="費用" value={governanceParams ? `${formatWeiAsTwdEth(governanceParams.subscriptionFeeWei)} / ${governanceParams.subscriptionDurationDays} 天` : "鏈上月訂閱"} />
       </div>
       <div className="mt-6 flex flex-wrap gap-3">
         <Button onClick={handleSubscribe} disabled={pending}>{member.subscriptionActive ? "續訂鏈上月訂閱" : "立即訂閱"}</Button>
         <Button variant="secondary" onClick={handleCancelSubscription} disabled={pending || !member.subscriptionActive}>取消訂閱</Button>
         <Button asChild variant="ghost">
-          <Link href="/">離開</Link>
+          <Link href="/member">離開</Link>
         </Button>
       </div>
       {message ? <p className="mt-4 text-sm text-primary">{message}</p> : null}
     </section>
   );
-}
-
-function formatWeiToEth(value: number) {
-  const amount = BigInt(value || 0);
-  const integer = amount / 10n ** 18n;
-  const fraction = amount % 10n ** 18n;
-  const fractionText = fraction.toString().padStart(18, "0").slice(0, 4).replace(/0+$/, "");
-  return `${integer.toString()}${fractionText ? `.${fractionText}` : ""}`;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

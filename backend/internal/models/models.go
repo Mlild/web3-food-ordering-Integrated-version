@@ -87,19 +87,20 @@ type MemberProfile struct {
 }
 
 type Merchant struct {
-	ID                string      `json:"id"`
-	Name              string      `json:"name"`
-	Group             string      `json:"group"`
-	Address           string      `json:"address"`
-	Description       string      `json:"description"`
-	PayoutAddress     string      `json:"payoutAddress"`
-	AverageRating     float64     `json:"averageRating,omitempty"`
-	ReviewCount       int64       `json:"reviewCount,omitempty"`
-	DelistRequestedAt time.Time   `json:"delistRequestedAt,omitempty"`
-	DelistedAt        time.Time   `json:"delistedAt,omitempty"`
-	OwnerMemberID     int64       `json:"ownerMemberId,omitempty"`
-	OwnerDisplayName  string      `json:"ownerDisplayName,omitempty"`
-	Menu              []*MenuItem `json:"menu"`
+	ID                string            `json:"id"`
+	Name              string            `json:"name"`
+	Group             string            `json:"group"`
+	Address           string            `json:"address"`
+	Description       string            `json:"description"`
+	PayoutAddress     string            `json:"payoutAddress"`
+	AverageRating     float64           `json:"averageRating,omitempty"`
+	ReviewCount       int64             `json:"reviewCount,omitempty"`
+	Building          *MerchantBuilding `json:"building,omitempty"`
+	DelistRequestedAt time.Time         `json:"delistRequestedAt,omitempty"`
+	DelistedAt        time.Time         `json:"delistedAt,omitempty"`
+	OwnerMemberID     int64             `json:"ownerMemberId,omitempty"`
+	OwnerDisplayName  string            `json:"ownerDisplayName,omitempty"`
+	Menu              []*MenuItem       `json:"menu"`
 }
 
 type MenuItem struct {

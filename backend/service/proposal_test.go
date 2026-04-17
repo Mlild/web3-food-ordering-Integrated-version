@@ -20,16 +20,16 @@ type mockGovernanceSettings struct{}
 
 func (m *mockGovernanceSettings) GovernanceParams() (*models.GovernanceParams, error) {
 	return &models.GovernanceParams{
-		CreateFeeWei:             1,
-		ProposalFeeWei:           1,
-		VoteFeeWei:               1,
-		WinnerProposalRefundBps:  9000,
-		LoserProposalRefundBps:   8000,
-		VoteRefundBps:            5000,
-		WinnerBonusBps:           1000,
-		LoserBonusBps:            500,
-		WinnerProposalPoints:     5,
-		WinnerVotePointsPerVote:  2,
+		CreateFeeWei:            1,
+		ProposalFeeWei:          1,
+		VoteFeeWei:              1,
+		WinnerProposalRefundBps: 9000,
+		LoserProposalRefundBps:  8000,
+		VoteRefundBps:           5000,
+		WinnerBonusBps:          1000,
+		LoserBonusBps:           500,
+		WinnerProposalPoints:    5,
+		WinnerVotePointsPerVote: 2,
 	}, nil
 }
 
@@ -106,7 +106,9 @@ func (m *mockMerchantRepo) UpsertMerchant(merchant *models.Merchant) (*models.Me
 func (m *mockMerchantRepo) UpsertMenuItem(_ string, _ *models.MenuItem) error {
 	return nil
 }
-func (m *mockMerchantRepo) GetMerchantDetail(id string) (*models.MerchantDetail, error) { return nil, nil }
+func (m *mockMerchantRepo) GetMerchantDetail(id string) (*models.MerchantDetail, error) {
+	return nil, nil
+}
 func (m *mockMerchantRepo) GetMerchantByOwner(memberID int64, wallet string) (*models.Merchant, error) {
 	return nil, nil
 }
@@ -126,7 +128,9 @@ func (m *mockMerchantRepo) UpdateOwnedMerchantWallet(memberID int64, wallet stri
 	return nil, nil
 }
 func (m *mockMerchantRepo) UnlinkOwnedMerchant(memberID int64) error { return nil }
-func (m *mockMerchantRepo) RequestMerchantDelist(memberID int64) (*models.Merchant, error) { return nil, nil }
+func (m *mockMerchantRepo) RequestMerchantDelist(memberID int64) (*models.Merchant, error) {
+	return nil, nil
+}
 func (m *mockMerchantRepo) ListMerchantDelistRequests(pendingOnly bool) ([]*models.MerchantDelistRequest, error) {
 	return []*models.MerchantDelistRequest{}, nil
 }
@@ -145,7 +149,9 @@ func (m *mockMerchantRepo) WithdrawMenuChangeRequest(requestID, requesterMemberI
 func (m *mockMerchantRepo) ReviewMenuChangeRequest(requestID, reviewerMemberID int64, reviewerName string, approved bool, reviewNote string, effectiveAt time.Time) (*models.MenuChangeRequest, error) {
 	return nil, nil
 }
-func (m *mockMerchantRepo) CancelMerchantDelist(memberID int64) (*models.Merchant, error) { return nil, nil }
+func (m *mockMerchantRepo) CancelMerchantDelist(memberID int64) (*models.Merchant, error) {
+	return nil, nil
+}
 func (m *mockMerchantRepo) ListMerchantOrders(merchantID string) ([]*models.Order, error) {
 	return []*models.Order{}, nil
 }
@@ -166,7 +172,7 @@ func TestAddOption_AllowsGovernanceFeeFlowWithoutProposalCoupon(t *testing.T) {
 	proposal, _ := proposalRepo.CreateProposal(member.ID, "Lunch", "", "all", "lunch", time.Now().In(time.Local).Format("2006-01-02"), 5, "Alice",
 		time.Now().Add(time.Hour), time.Now().Add(2*time.Hour), time.Now().Add(3*time.Hour), nil)
 
-	opt, err := svc.AddOption(proposal.ID, member.ID, "shop-bento", false)
+	opt, err := svc.AddOption(proposal.ID, member.ID, "shop-bento", false, false)
 	if err != nil {
 		t.Fatalf("expected add option to succeed under governance fee flow, got %v", err)
 	}
@@ -190,7 +196,7 @@ func TestVote_WrongStatus(t *testing.T) {
 		time.Now().Add(time.Hour), time.Now().Add(2*time.Hour), time.Now().Add(3*time.Hour), nil)
 	// proposal.Status is "proposing", not "voting"
 
-	_, err = svc.Vote(proposal.ID, member.ID, 1, 10, false)
+	_, err = svc.Vote(proposal.ID, member.ID, 1, 10, false, false)
 	if err == nil {
 		t.Error("expected error for wrong proposal status")
 	}
@@ -222,6 +228,72 @@ func TestQuoteVote_InvalidAmount(t *testing.T) {
 	}
 	if quote["voteWeight"] != 7 {
 		t.Fatalf("expected vote weight 7, got %d", quote["voteWeight"])
+	}
+}
+
+func TestQuoteVote_UsesSingleVoteWhenTicketSelectedWithoutInput(t *testing.T) {
+	memberRepo := newMockMemberRepo()
+	proposalRepo := newMockProposalRepo()
+	merchantRepo := &mockMerchantRepo{}
+	svc := service.NewProposalService(proposalRepo, memberRepo, merchantRepo, &mockGovernanceSettings{})
+
+	quote, err := svc.QuoteVote(0, true)
+	if err != nil {
+		t.Fatalf("expected vote ticket quote to default to one vote, got %v", err)
+	}
+	if quote["voteCount"] != 1 {
+		t.Fatalf("expected vote count 1, got %d", quote["voteCount"])
+	}
+	if quote["feeAmountWei"] != 0 {
+		t.Fatalf("expected fully discounted single vote fee, got %d", quote["feeAmountWei"])
+	}
+}
+
+func TestAddOption_AllowsLateSyncWhenProposalDeadlineAlreadyPassed(t *testing.T) {
+	memberRepo := newMockMemberRepo()
+	proposalRepo := newMockProposalRepo()
+	merchantRepo := &mockMerchantRepo{}
+	svc := service.NewProposalService(proposalRepo, memberRepo, merchantRepo, &mockGovernanceSettings{})
+	memberSvc := service.NewMemberService(memberRepo)
+
+	member, _, err := memberSvc.Register("late-option@example.com", "pass", "Alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposal, _ := proposalRepo.CreateProposal(member.ID, "Lunch", "", "all", "lunch", time.Now().Add(-24*time.Hour).In(time.Local).Format("2006-01-02"), 5, "Alice",
+		time.Now().Add(-time.Minute), time.Now().Add(30*time.Minute), time.Now().Add(time.Hour), nil)
+
+	opt, err := svc.AddOption(proposal.ID, member.ID, "shop-bento", false, true)
+	if err != nil {
+		t.Fatalf("expected late sync add option to succeed, got %v", err)
+	}
+	if opt == nil || opt.MerchantID != "shop-bento" {
+		t.Fatalf("expected shop-bento option to be created, got %+v", opt)
+	}
+}
+
+func TestVote_AllowsLateSyncWhenTicketDefaultsToSingleVote(t *testing.T) {
+	memberRepo := newMockMemberRepo()
+	proposalRepo := newMockProposalRepo()
+	merchantRepo := &mockMerchantRepo{}
+	svc := service.NewProposalService(proposalRepo, memberRepo, merchantRepo, &mockGovernanceSettings{})
+	memberSvc := service.NewMemberService(memberRepo)
+
+	member, _, err := memberSvc.Register("late-vote@example.com", "pass", "Alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	member.VoteTicketCount = 1
+	proposal, _ := proposalRepo.CreateProposal(member.ID, "Lunch", "", "all", "lunch", time.Now().Add(-24*time.Hour).In(time.Local).Format("2006-01-02"), 5, "Alice",
+		time.Now().Add(-2*time.Hour), time.Now().Add(-time.Minute), time.Now().Add(45*time.Minute), nil)
+	proposal.Options = []*models.ProposalOption{{ID: 1, MerchantID: "shop-bento"}}
+
+	updated, err := svc.Vote(proposal.ID, member.ID, 1, 0, true, true)
+	if err != nil {
+		t.Fatalf("expected late sync vote to succeed, got %v", err)
+	}
+	if updated == nil {
+		t.Fatal("expected updated proposal after vote")
 	}
 }
 

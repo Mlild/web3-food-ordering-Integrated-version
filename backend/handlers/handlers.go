@@ -622,6 +622,42 @@ func (s *Server) requireProposalAccess(memberID int64, proposalID int64) (*model
 	return proposal, nil
 }
 
+func (s *Server) allowsLateSync(memberID int64, txHash, syncStartedAt string, proposalID int64, deadline time.Time, allowedActions ...string) bool {
+	txHash = strings.TrimSpace(txHash)
+	if txHash == "" || deadline.IsZero() {
+		return false
+	}
+	pending, err := s.txRepo.GetPendingTransaction(memberID, txHash)
+	if err != nil {
+		return false
+	}
+	if proposalID > 0 && pending.ProposalID > 0 && pending.ProposalID != proposalID {
+		return false
+	}
+	if len(allowedActions) > 0 {
+		action := strings.TrimSpace(pending.Action)
+		matched := false
+		for _, allowed := range allowedActions {
+			if action == allowed {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	occurredAt := strings.TrimSpace(syncStartedAt)
+	if occurredAt == "" {
+		occurredAt = strings.TrimSpace(pending.CreatedAt)
+	}
+	startedAt, err := time.Parse(time.RFC3339, occurredAt)
+	if err != nil {
+		return false
+	}
+	return !startedAt.UTC().After(deadline.UTC())
+}
+
 func (s *Server) handleListProposals(w http.ResponseWriter, r *http.Request, memberID int64) {
 	groups, err := s.groupRepo.ListMemberGroups(memberID)
 	if err != nil {
@@ -778,7 +814,7 @@ func (s *Server) handleCreateProposal(w http.ResponseWriter, r *http.Request, me
 		if index < len(initialCouponFlags) {
 			useProposalTicket = initialCouponFlags[index]
 		}
-		option, err := s.proposals.AddOption(proposal.ID, memberID, merchantID, useProposalTicket)
+		option, err := s.proposals.AddOption(proposal.ID, memberID, merchantID, useProposalTicket, false)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -820,12 +856,14 @@ func (s *Server) handleAddOption(w http.ResponseWriter, r *http.Request, memberI
 		UseProposalTicket bool   `json:"useProposalTicket"`
 		ChainOptionIndex  int64  `json:"chainOptionIndex"`
 		TxHash            string `json:"txHash"`
+		SyncStartedAt     string `json:"syncStartedAt"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if _, err := s.requireProposalAccess(memberID, proposalID); err != nil {
+	proposal, err := s.requireProposalAccess(memberID, proposalID)
+	if err != nil {
 		if isProposalAccessError(err) {
 			writeError(w, http.StatusForbidden, err.Error())
 			return
@@ -850,7 +888,8 @@ func (s *Server) handleAddOption(w http.ResponseWriter, r *http.Request, memberI
 			}
 		}
 	}
-	option, err := s.proposals.AddOption(proposalID, memberID, body.MerchantID, body.UseProposalTicket)
+	allowLateSync := s.allowsLateSync(memberID, body.TxHash, body.SyncStartedAt, proposalID, proposal.ProposalDeadline, "add_option")
+	option, err := s.proposals.AddOption(proposalID, memberID, body.MerchantID, body.UseProposalTicket, allowLateSync)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -900,6 +939,7 @@ func (s *Server) handleVote(w http.ResponseWriter, r *http.Request, memberID int
 		VoteCount     int64  `json:"voteCount"`
 		UseVoteTicket bool   `json:"useVoteTicket"`
 		TxHash        string `json:"txHash"`
+		SyncStartedAt string `json:"syncStartedAt"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -908,7 +948,8 @@ func (s *Server) handleVote(w http.ResponseWriter, r *http.Request, memberID int
 	if body.VoteCount == 0 && !body.UseVoteTicket {
 		body.VoteCount = 1
 	}
-	if _, err := s.requireProposalAccess(memberID, proposalID); err != nil {
+	proposalAccess, err := s.requireProposalAccess(memberID, proposalID)
+	if err != nil {
 		if isProposalAccessError(err) {
 			writeError(w, http.StatusForbidden, err.Error())
 			return
@@ -925,7 +966,8 @@ func (s *Server) handleVote(w http.ResponseWriter, r *http.Request, memberID int
 			}
 		}
 	}
-	proposal, err := s.proposals.Vote(proposalID, memberID, body.OptionID, body.VoteCount, body.UseVoteTicket)
+	allowLateSync := s.allowsLateSync(memberID, body.TxHash, body.SyncStartedAt, proposalID, proposalAccess.VoteDeadline, "vote")
+	proposal, err := s.proposals.Vote(proposalID, memberID, body.OptionID, body.VoteCount, body.UseVoteTicket, allowLateSync)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -986,7 +1028,7 @@ func (s *Server) handleOrderQuote(w http.ResponseWriter, r *http.Request, member
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	quote, err := s.orders.Quote(body.ProposalID, memberID, body.Items)
+	quote, err := s.orders.Quote(body.ProposalID, memberID, body.Items, false)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1038,12 +1080,14 @@ func (s *Server) handleFinalizeOrder(w http.ResponseWriter, r *http.Request, mem
 		EscrowOrderID *int64                 `json:"escrowOrderId"`
 		Signature     *models.OrderSignature `json:"signature"`
 		TxHash        string                 `json:"txHash"`
+		SyncStartedAt string                 `json:"syncStartedAt"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if _, err := s.requireProposalAccess(memberID, body.ProposalID); err != nil {
+	proposal, err := s.requireProposalAccess(memberID, body.ProposalID)
+	if err != nil {
 		if isProposalAccessError(err) {
 			writeError(w, http.StatusForbidden, err.Error())
 			return
@@ -1065,7 +1109,8 @@ func (s *Server) handleFinalizeOrder(w http.ResponseWriter, r *http.Request, mem
 			}
 		}
 	}
-	order, err := s.orders.SaveSignedOrder(body.ProposalID, memberID, body.Items, body.Signature, body.EscrowOrderID)
+	allowLateSync := s.allowsLateSync(memberID, body.TxHash, body.SyncStartedAt, body.ProposalID, proposal.OrderDeadline, "pay_order", "place_order")
+	order, err := s.orders.SaveSignedOrder(body.ProposalID, memberID, body.Items, body.Signature, body.EscrowOrderID, allowLateSync)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

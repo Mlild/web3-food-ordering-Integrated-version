@@ -67,8 +67,9 @@ export async function sendNativePayment(to: `0x${string}`, value: bigint) {
     to,
     value
   });
+  const submittedAt = new Date().toISOString();
   await publicClient.waitForTransactionReceipt({ hash });
-  return { hash, account };
+  return { hash, account, submittedAt };
 }
 
 export function toStableKey(prefix: string, value: string) {

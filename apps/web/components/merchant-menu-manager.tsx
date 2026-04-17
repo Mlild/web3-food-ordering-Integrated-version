@@ -13,17 +13,7 @@ import {
   type Merchant,
   type MerchantDashboard as MerchantDashboardData
 } from "@/lib/api";
-
-const WEI_PER_ETH = 10n ** 18n;
-const APPROX_TWD_PER_ETH = 120000;
-
-function formatWei(value: string | number) {
-  const amount = BigInt(typeof value === "number" ? value : value || "0");
-  const integer = amount / WEI_PER_ETH;
-  const fraction = amount % WEI_PER_ETH;
-  const fractionText = fraction.toString().padStart(18, "0").slice(0, 4).replace(/0+$/, "");
-  return `${integer.toString()}${fractionText ? `.${fractionText}` : ""} ETH`;
-}
+import { APPROX_TWD_PER_ETH, WEI_PER_ETH, formatWeiAsTwdEth } from "@/lib/currency";
 
 function formatWeiForInput(value: string | number) {
   const amount = BigInt(typeof value === "number" ? value : value || "0");
@@ -53,8 +43,8 @@ function parsePriceInputToWei(input: string, unit: "wei" | "eth") {
 function formatApproxTWDFromWei(value: string) {
   if (!value) return "";
   const wei = BigInt(value);
-  const twd = Number((wei * BigInt(APPROX_TWD_PER_ETH)) / WEI_PER_ETH);
-  return `約 NT$${twd.toLocaleString("zh-TW")}`;
+  const twd = Number((wei * APPROX_TWD_PER_ETH) / WEI_PER_ETH);
+  return `NT$${twd.toLocaleString("zh-TW")}`;
 }
 
 type DraftAction = "create" | "update" | "delete";
@@ -133,7 +123,7 @@ export function MerchantMenuOverview() {
                   <p className="mt-2 text-sm text-muted-foreground">{item.description || "尚無描述"}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold">{formatWei(item.priceWei)}</p>
+                  <p className="font-bold">{formatWeiAsTwdEth(item.priceWei)}</p>
                 </div>
               </div>
             </div>
@@ -312,7 +302,7 @@ export function MerchantMenuManager({ mode = "manage" }: { mode?: "manage" | "cr
                     <p className="font-semibold">{item.name}</p>
                     <p className="mt-1 text-sm text-muted-foreground">{item.id}</p>
                   </div>
-                  <p className="font-semibold">{formatWei(item.priceWei)}</p>
+                  <p className="font-semibold">{formatWeiAsTwdEth(item.priceWei)}</p>
                 </div>
                 <div className="mt-3 flex gap-3">
                   <Button variant="secondary" disabled={pending} onClick={() => loadItemToDraft(item)}>
@@ -369,7 +359,7 @@ export function MerchantMenuManager({ mode = "manage" }: { mode?: "manage" | "cr
             </div>
             {draft.action !== "delete" ? (
               <p className="text-xs text-muted-foreground">
-                {pricePreview.error ? pricePreview.error : pricePreview.value ? `${formatWei(pricePreview.value)} / ${formatApproxTWDFromWei(pricePreview.value)}` : "請輸入價格數字，系統會自動換算。"}
+                {pricePreview.error ? pricePreview.error : pricePreview.value ? `${formatApproxTWDFromWei(pricePreview.value)} / ${formatWeiForInput(pricePreview.value)} ETH` : "請輸入價格數字，系統會自動換算。"}
               </p>
             ) : null}
           </label>

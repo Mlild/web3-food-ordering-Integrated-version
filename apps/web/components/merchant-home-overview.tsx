@@ -5,14 +5,7 @@ import { Settings } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { fetchMe, fetchMerchantDashboard, fetchMerchantDetail, type Member, type MerchantDashboard as MerchantDashboardData, type MerchantDetail } from "@/lib/api";
-
-function formatWei(value: string | number) {
-  const amount = BigInt(typeof value === "number" ? value : value || "0");
-  const integer = amount / 10n ** 18n;
-  const fraction = amount % 10n ** 18n;
-  const fractionText = fraction.toString().padStart(18, "0").slice(0, 4).replace(/0+$/, "");
-  return `${integer.toString()}${fractionText ? `.${fractionText}` : ""} ETH`;
-}
+import { formatWeiAsTwdEth } from "@/lib/currency";
 
 function formatAggregateOrderStatus(statuses: string[]) {
   if (statuses.some((status) => status === "payment_received" || status === "paid_local" || status === "paid_onchain")) return "pending";
@@ -151,7 +144,7 @@ export function MerchantHomeOverview() {
             />
             <InfoCard
               label="累積營業額"
-              value={formatWei(dashboard.totalRevenueWei || "0")}
+              value={formatWeiAsTwdEth(dashboard.totalRevenueWei || "0")}
               href="/merchant/analytics"
               hint="查看營運分析"
             />

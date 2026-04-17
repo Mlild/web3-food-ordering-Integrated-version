@@ -17,14 +17,7 @@ import {
   type Member
 } from "@/lib/api";
 import { toFriendlyWalletError } from "@/lib/chain";
-
-function formatWei(value: string | number) {
-  const amount = BigInt(typeof value === "number" ? value : value || "0");
-  const integer = amount / 10n ** 18n;
-  const fraction = amount % 10n ** 18n;
-  const fractionText = fraction.toString().padStart(18, "0").slice(0, 4).replace(/0+$/, "");
-  return `${integer.toString()}${fractionText ? `.${fractionText}` : ""} ETH`;
-}
+import { formatWeiAsTwdEth } from "@/lib/currency";
 
 const statusMeta = {
   all: "全部訂單",
@@ -94,6 +87,7 @@ export function MerchantDashboard() {
       title: string;
       createdBy: number;
       createdByName: string;
+      memberName: string;
       createdAt: string;
       amountWei: bigint;
       memberCount: number;
@@ -115,6 +109,7 @@ export function MerchantDashboard() {
         title: order.title || `訂單 #${order.proposalId}`,
         createdBy: order.createdBy,
         createdByName: order.createdByName || "",
+        memberName: order.memberName || "",
         createdAt: order.createdAt,
         amountWei: BigInt(order.amountWei || "0"),
         memberCount: 1,
@@ -319,10 +314,10 @@ export function MerchantDashboard() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="font-bold">{order.title}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">建立者：{order.createdByName.trim() || "未知"} · {new Date(order.createdAt).toLocaleString("zh-TW")} · {order.memberCount} 位成員點餐</p>
+                    <p className="mt-1 text-sm text-muted-foreground">建立者：{order.createdByName.trim() || order.memberName.trim() || "未知"} · {new Date(order.createdAt).toLocaleString("zh-TW")} · {order.memberCount} 位成員點餐</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold">{formatWei(order.amountWei.toString())}</p>
+                    <p className="font-bold">{formatWeiAsTwdEth(order.amountWei.toString())}</p>
                     <p className="text-sm text-muted-foreground">{formatAggregateOrderStatus(order.statuses)}</p>
                   </div>
                 </div>

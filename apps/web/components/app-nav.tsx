@@ -6,8 +6,8 @@ import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { clearStoredToken, fetchMe, fetchMerchantDashboard, getStoredToken, setStoredToken, type Member } from "@/lib/api";
-import { authenticateWithWallet, clearWalletConnection, getConnectedWalletAddress } from "@/lib/wallet-auth";
+import { clearStoredToken, fetchMe, fetchMerchantDashboard, getStoredToken, type Member } from "@/lib/api";
+import { clearWalletConnection, getConnectedWalletAddress } from "@/lib/wallet-auth";
 
 const memberLinks = [
   { href: "/member", label: "會員資訊" },
@@ -16,7 +16,10 @@ const memberLinks = [
   { href: "/member/ongoing-orders", label: "成立中訂單" },
   { href: "/member/ordering/submitted", label: "完成送出訂單" },
   { href: "/member/orders", label: "歷史訂單" },
-  { href: "/member/merchants", label: "店家清單" }
+  { href: "/member/merchants", label: "店家清單" },
+  { href: "/member/badges", label: "勳章兌換" },
+  { href: "/member/invite-codes", label: "註冊邀請碼" },
+  { href: "/member/records", label: "使用紀錄" }
 ] as const;
 
 const adminLinks = [
@@ -42,6 +45,17 @@ export function AppNav() {
 export function AppNavCompact() {
   return <AppNavInner showLinks={false} interactiveWalletStatus={false} />;
 }
+
+const chipClass =
+  "inline-flex min-h-[38px] items-center gap-2 rounded-full border border-border bg-white/82 px-4 py-2 text-[13px] font-medium text-foreground-soft shadow-[0_10px_24px_rgba(76,49,28,0.08)] backdrop-blur-md transition duration-200";
+const navLinkBase =
+  "inline-flex min-h-[40px] items-center rounded-full border px-4 py-2 text-[14px] font-medium transition duration-200";
+const navLinkActive = "border-[rgba(186,110,39,0.2)] bg-primary text-primary-foreground shadow-[0_12px_28px_rgba(125,68,29,0.16)]";
+const navLinkIdle = "border-border bg-white/78 text-foreground-soft hover:-translate-y-0.5 hover:bg-white hover:text-primary";
+const panelClass =
+  "border border-border bg-[rgba(255,251,247,0.96)] p-3 shadow-[0_24px_54px_rgba(76,49,28,0.16)] backdrop-blur-md";
+const buttonClass =
+  "inline-flex cursor-pointer items-center gap-2 rounded-full border border-border bg-white/82 px-4 py-2 text-[14px] font-medium text-foreground-soft shadow-[0_10px_24px_rgba(76,49,28,0.08)] transition duration-200 hover:-translate-y-0.5 hover:bg-white hover:text-primary disabled:cursor-wait";
 
 function AppNavInner({
   showLinks,
@@ -152,32 +166,12 @@ function AppNavInner({
     clearWalletConnection();
     setMember(null);
     setWalletAddress("");
-    window.location.replace("/");
+    window.location.replace("/login");
   }, []);
 
-  const handleWalletLogin = useCallback(async () => {
-    setWalletActionPending(true);
+  const handleLoginRoute = useCallback(() => {
     setWalletMessage("");
-    try {
-      clearStoredToken();
-      clearWalletConnection();
-      const result = await authenticateWithWallet({});
-      setStoredToken(result.token);
-      setMember(result.member);
-      setWalletAddress(result.member.walletAddress || "");
-      const nextLocation = result.member.subscriptionActive ? "/member" : "/subscribe";
-      window.location.replace(nextLocation);
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("displayName is required")) {
-        const message = "第一次建立會員必須先在首頁填寫顯示名稱，再連結錢包登入。";
-        window.alert(message);
-        setWalletMessage(message);
-      } else {
-        setWalletMessage(error instanceof Error ? error.message : "錢包授權失敗");
-      }
-    } finally {
-      setWalletActionPending(false);
-    }
+    window.location.replace("/login");
   }, []);
 
   const handleWalletStatusClick = useCallback(() => {
@@ -185,8 +179,8 @@ function AppNavInner({
       setWalletMenuOpen((prev) => !prev);
       return;
     }
-    void handleWalletLogin();
-  }, [handleWalletLogin, member]);
+    handleLoginRoute();
+  }, [handleLoginRoute, member]);
 
   const connectedAddress = member?.walletAddress || walletAddress || "";
   const isAdmin = Boolean(member?.isAdmin);
@@ -210,7 +204,7 @@ function AppNavInner({
   return (
     <div className="relative z-[80] flex items-center justify-end gap-3">
       <div className="hidden items-center gap-2 md:flex">
-        <span className="rounded-full border border-[rgba(220,193,177,0.46)] bg-[rgba(255,255,255,0.78)] px-4 py-2 text-sm font-bold tracking-[0.04em] text-primary">
+        <span className={`${chipClass} sketch-mono text-primary`}>
           {currentPathLabel}
         </span>
       </div>
@@ -223,11 +217,7 @@ function AppNavInner({
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`rounded-full border px-4 py-2 text-sm font-bold tracking-[0.08em] transition ${
-                    active
-                      ? "border-[rgba(148,74,0,0.3)] bg-[rgba(255,255,255,0.82)] text-primary shadow-[0_10px_24px_rgba(148,74,0,0.08)]"
-                      : "border-[rgba(220,193,177,0.46)] bg-[rgba(251,242,237,0.72)] text-muted-foreground hover:border-[rgba(148,74,0,0.24)] hover:text-primary"
-                  }`}
+                  className={`${navLinkBase} ${active ? navLinkActive : navLinkIdle}`}
                 >
                   {link.label}
                 </Link>
@@ -240,7 +230,7 @@ function AppNavInner({
                 ref={roleSwitcherRef}
                 type="button"
                 onClick={() => setRoleMenuOpen((prev) => !prev)}
-                className="inline-flex items-center gap-2 rounded-full border border-[rgba(220,193,177,0.46)] bg-[rgba(255,255,255,0.78)] px-4 py-2 text-sm font-bold text-muted-foreground transition hover:border-[rgba(148,74,0,0.24)] hover:text-primary"
+                className={buttonClass}
               >
                 <span>{currentRoleOption.label}</span>
                 <ChevronDown className={`h-4 w-4 transition ${roleMenuOpen ? "rotate-180" : ""}`} />
@@ -252,11 +242,11 @@ function AppNavInner({
               <button
                 type="button"
                 onClick={interactiveWalletStatus ? handleWalletStatusClick : undefined}
-                className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[rgba(220,193,177,0.46)] bg-[rgba(255,255,255,0.78)] px-4 py-2 text-sm font-bold text-muted-foreground shadow-[0_10px_24px_rgba(148,74,0,0.06)] transition hover:border-[rgba(148,74,0,0.24)] hover:text-primary disabled:cursor-wait"
+                className={buttonClass}
                 aria-label="查看帳號與錢包狀態"
                 disabled={walletActionPending || !interactiveWalletStatus}
               >
-                <span className={`h-2.5 w-2.5 rounded-full ${connectedAddress ? "bg-emerald-500" : "bg-muted-foreground/50"}`} />
+                <span className={`h-2.5 w-2.5 rounded-full ${connectedAddress ? "bg-[#2E8B57]" : "bg-muted-foreground/50"}`} />
                 <span>{walletActionPending ? "授權中..." : currentIdentity}</span>
               </button>
             </div>
@@ -265,7 +255,7 @@ function AppNavInner({
             <button
               type="button"
               onClick={handleLogout}
-              className="rounded-full border border-[rgba(220,193,177,0.46)] bg-[rgba(255,251,247,0.88)] px-4 py-2 text-sm font-bold tracking-[0.08em] text-foreground transition hover:border-[rgba(148,74,0,0.24)] hover:text-primary"
+              className={buttonClass}
             >
               登出
             </button>
@@ -278,29 +268,33 @@ function AppNavInner({
           <button
             type="button"
             onClick={interactiveWalletStatus ? handleWalletStatusClick : undefined}
-            className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[rgba(220,193,177,0.46)] bg-[rgba(255,255,255,0.78)] px-4 py-2 text-sm font-bold text-muted-foreground shadow-[0_10px_24px_rgba(148,74,0,0.06)] transition hover:border-[rgba(148,74,0,0.24)] hover:text-primary disabled:cursor-wait"
+            className={buttonClass}
             aria-label={member ? "查看錢包連結狀態" : "連接錢包並登入"}
             disabled={walletActionPending || !interactiveWalletStatus}
           >
-            <span className={`h-2.5 w-2.5 rounded-full ${connectedAddress ? "bg-emerald-500" : "bg-muted-foreground/50"}`} />
+            <span className={`h-2.5 w-2.5 rounded-full ${connectedAddress ? "bg-[#2E8B57]" : "bg-muted-foreground/50"}`} />
             <span>{walletActionPending ? "授權中..." : statusLabel}</span>
           </button>
         </div>
       ) : null}
-      {walletMessage ? <p className="hidden text-xs text-[hsl(7_65%_42%)] md:block">{walletMessage}</p> : null}
+      {walletMessage ? <p className="hidden text-[13px] text-[#D42B2B] font-bold md:block">{walletMessage}</p> : null}
 
       {/* Mobile hamburger */}
       {showLinks ? (
         <div className="flex items-center gap-2 md:hidden">
-          <span className="max-w-[9rem] truncate rounded-full border border-border bg-card px-3 py-2 text-xs font-semibold text-primary">{currentPathLabel}</span>
+          <span
+            className={`${chipClass} max-w-[9rem] truncate text-primary`}
+          >
+            {currentPathLabel}
+          </span>
           <button
             type="button"
             onClick={() => setMenuOpen((prev) => !prev)}
-            className="inline-flex cursor-pointer items-center justify-center rounded-full border border-border bg-card p-2.5 text-foreground transition hover:border-foreground/40"
+            className="inline-flex cursor-pointer items-center justify-center rounded-full border border-border bg-white/82 p-2.5 text-foreground shadow-[0_10px_24px_rgba(76,49,28,0.08)] transition duration-200 hover:-translate-y-0.5 hover:bg-white"
             aria-label={menuOpen ? "關閉選單" : "開啟選單"}
             aria-expanded={menuOpen}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               {menuOpen ? (
                 <>
                   <line x1="18" y1="6" x2="6" y2="18" />
@@ -322,7 +316,7 @@ function AppNavInner({
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[rgba(220,193,177,0.46)] bg-[rgba(255,255,255,0.78)] px-4 py-2 text-sm font-bold text-muted-foreground transition hover:border-[rgba(148,74,0,0.24)] hover:text-primary"
+              className={buttonClass}
             >
               登出
             </button>
@@ -330,11 +324,11 @@ function AppNavInner({
             <button
               type="button"
               onClick={interactiveWalletStatus ? handleWalletStatusClick : undefined}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[rgba(220,193,177,0.46)] bg-[rgba(255,255,255,0.78)] px-4 py-2 text-sm font-bold text-muted-foreground transition hover:border-[rgba(148,74,0,0.24)] hover:text-primary disabled:cursor-wait"
+              className={buttonClass}
               aria-label={member ? "查看錢包連結狀態" : "連接錢包並登入"}
               disabled={walletActionPending || !interactiveWalletStatus}
             >
-              <span className={`h-2.5 w-2.5 rounded-full ${connectedAddress ? "bg-emerald-500" : "bg-muted-foreground/50"}`} />
+              <span className={`h-2.5 w-2.5 rounded-full ${connectedAddress ? "bg-[#2E8B57]" : "bg-muted-foreground/50"}`} />
               <span>{walletActionPending ? "授權中..." : statusLabel}</span>
             </button>
           )}
@@ -342,10 +336,14 @@ function AppNavInner({
       )}
 
       {menuOpen ? (
-        <div className="absolute right-4 top-full z-50 mt-3 w-56 rounded-[1.5rem] border border-[rgba(220,193,177,0.42)] bg-[rgba(255,251,247,0.94)] p-3 shadow-float backdrop-blur md:hidden">
+        <div
+          className={`absolute right-4 top-full z-50 mt-3 w-56 rounded-[1.5rem] md:hidden ${panelClass}`}
+        >
           {canSwitchRoles ? (
-            <div className="mb-3 rounded-[1.2rem] border border-[rgba(220,193,177,0.42)] bg-[rgba(255,255,255,0.82)] p-2">
-              <p className="px-2 pb-2 text-xs font-black uppercase tracking-[0.16em] text-muted-foreground">角色切換</p>
+            <div
+              className="mb-3 rounded-[1.2rem] border border-[rgba(125,68,29,0.08)] bg-secondary/70 p-2"
+            >
+              <p className="px-2 pb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">角色切換</p>
               <nav className="grid gap-1">
                 {roleOptions.map((link) => {
                   const active = pathname.startsWith(link.href);
@@ -353,12 +351,12 @@ function AppNavInner({
                     <Link
                       key={link.href}
                       href={link.href}
-                      className={`rounded-[0.95rem] px-3 py-3 text-center text-sm font-semibold transition ${
-                        active ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-secondary"
+                      className={`px-3 py-3 text-center text-[14px] font-bold transition ${
+                        active ? "rounded-[1rem] bg-primary text-primary-foreground shadow-[0_12px_28px_rgba(125,68,29,0.14)]" : "rounded-[1rem] text-foreground hover:bg-white/70"
                       }`}
                     >
-                      <span>{link.label}</span>
-                      <span className={`text-xs ${active ? "text-primary-foreground/80" : "text-muted-foreground"}`}>({link.status})</span>
+                      <span>{link.label}</span>{" "}
+                      <span className={`text-[12px] ${active ? "text-primary-foreground/80" : "text-muted-foreground"}`}>({link.status})</span>
                     </Link>
                   );
                 })}
@@ -372,10 +370,8 @@ function AppNavInner({
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`rounded-[1rem] px-4 py-3 text-sm font-semibold transition ${
-                    active
-                      ? "bg-primary text-primary-foreground"
-                      : "text-foreground hover:bg-secondary"
+                  className={`px-4 py-3 text-[14px] font-bold transition ${
+                    active ? "rounded-[1rem] bg-primary text-primary-foreground shadow-[0_12px_28px_rgba(125,68,29,0.14)]" : "rounded-[1rem] text-foreground hover:bg-white/70"
                   }`}
                 >
                   {link.label}
@@ -383,21 +379,22 @@ function AppNavInner({
               );
             })}
           </nav>
-          <div className="mt-2 border-t border-border pt-2">
+          <div className="mt-2 border-t border-border/60 pt-2">
             <button
               type="button"
-              onClick={member ? handleLogout : () => void handleWalletLogin()}
-              className="w-full cursor-pointer rounded-xl px-4 py-3 text-left text-sm font-semibold text-foreground transition hover:bg-secondary disabled:cursor-wait"
+              onClick={member ? handleLogout : handleLoginRoute}
+              className="w-full cursor-pointer px-4 py-3 text-left text-[14px] font-bold text-foreground transition hover:bg-secondary disabled:cursor-wait"
+              style={{ borderRadius: "1rem" }}
               disabled={walletActionPending}
             >
               {walletActionPending ? "授權中..." : member ? "登出" : statusLabel}
             </button>
             <div className="px-4 pb-2">
-              <p className="text-xs font-semibold text-foreground">{currentIdentity}</p>
-              <p className="break-all text-xs text-muted-foreground">{connectedAddress || "尚未連接錢包"}</p>
-              <p className="mt-2 text-xs text-muted-foreground">{member ? "已連接後可從這裡登出" : "點擊上方可重新連接並登入"}</p>
+              <p className="text-[13px] font-bold text-foreground">{currentIdentity}</p>
+              <p className="break-all text-[12px] text-muted-foreground sketch-mono">{connectedAddress || "尚未連接錢包"}</p>
+              <p className="mt-2 text-[12px] text-muted-foreground italic">{member ? "已連接後可從這裡登出" : "點擊上方可重新連接並登入"}</p>
             </div>
-            {walletMessage ? <p className="px-4 pb-2 text-xs text-[hsl(7_65%_42%)]">{walletMessage}</p> : null}
+            {walletMessage ? <p className="px-4 pb-2 text-[12px] text-[#D42B2B] font-bold">{walletMessage}</p> : null}
           </div>
         </div>
       ) : null}
@@ -411,15 +408,17 @@ function AppNavInner({
                 className="fixed inset-0 z-[150] cursor-default bg-transparent"
                 onClick={() => setWalletMenuOpen(false)}
               />
-              <div className="fixed right-4 top-20 z-[160] min-w-56 rounded-[1.5rem] border border-[rgba(220,193,177,0.42)] bg-[rgba(255,251,247,0.98)] p-3 shadow-float backdrop-blur md:right-6">
-                <p className="px-3 text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">目前帳號</p>
-                <p className="mt-1 px-3 text-sm font-semibold text-foreground">{currentIdentity}</p>
-                <p className="mt-3 px-3 text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">錢包地址</p>
-                <p className="mt-1 break-all px-3 text-sm font-semibold text-foreground">{member.walletAddress || connectedAddress}</p>
+              <div
+                className={`fixed right-4 top-20 z-[160] min-w-56 rounded-[1.5rem] p-3 md:right-6 ${panelClass}`}
+              >
+                <p className="px-3 text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">目前帳號</p>
+                <p className="mt-1 px-3 text-[14px] font-bold text-foreground">{currentIdentity}</p>
+                <p className="mt-3 px-3 text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">錢包地址</p>
+                <p className="mt-1 break-all px-3 text-[14px] font-bold text-foreground sketch-mono">{member.walletAddress || connectedAddress}</p>
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="mt-3 w-full rounded-[1rem] border border-[rgba(220,193,177,0.46)] bg-[rgba(251,242,237,0.72)] px-4 py-3 text-left text-sm font-semibold text-foreground transition hover:bg-secondary"
+                  className="mt-3 w-full rounded-[1rem] border border-border bg-secondary px-4 py-3 text-left text-[14px] font-bold text-foreground shadow-[0_10px_24px_rgba(76,49,28,0.08)] transition duration-200 hover:bg-white"
                 >
                   登出
                 </button>
@@ -438,8 +437,11 @@ function AppNavInner({
                 onClick={() => setRoleMenuOpen(false)}
               />
               <div
-                className="fixed z-[180] min-w-56 rounded-[1.4rem] border border-[rgba(220,193,177,0.42)] bg-[rgba(255,251,247,0.98)] p-2 shadow-float backdrop-blur"
-                style={{ top: `${roleMenuPosition.top}px`, right: `${roleMenuPosition.right}px` }}
+                className={`fixed z-[180] min-w-56 rounded-[1.5rem] p-2 ${panelClass}`}
+                style={{
+                  top: `${roleMenuPosition.top}px`,
+                  right: `${roleMenuPosition.right}px`
+                }}
               >
                 {roleOptions.map((option) => {
                   const active = pathname.startsWith(option.href);
@@ -447,12 +449,12 @@ function AppNavInner({
                     <Link
                       key={option.href}
                       href={option.href}
-                      className={`flex items-center justify-between gap-4 rounded-[1rem] px-4 py-3 text-sm font-semibold transition ${
-                        active ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-secondary"
+                      className={`flex items-center justify-between gap-4 px-4 py-3 text-[14px] font-bold transition ${
+                        active ? "rounded-[1rem] bg-primary text-primary-foreground shadow-[0_12px_28px_rgba(125,68,29,0.14)]" : "rounded-[1rem] text-foreground hover:bg-white/70"
                       }`}
                     >
                       <span>{option.label}</span>
-                      <span className={`text-xs ${active ? "text-primary-foreground/80" : "text-muted-foreground"}`}>({option.status})</span>
+                      <span className={`text-[12px] ${active ? "text-primary-foreground/80" : "text-muted-foreground"}`}>({option.status})</span>
                     </Link>
                   );
                 })}
@@ -480,6 +482,9 @@ function describePath(pathname: string) {
     [/^\/member\/merchants\/[^/]+$/, ["會員中心", "店家清單", "店家詳細資料"]],
     [/^\/member\/orders$/, ["會員中心", "訂單紀錄"]],
     [/^\/member\/orders\/\d+$/, ["會員中心", "訂單紀錄", "訂單詳細資料"]],
+    [/^\/member\/badges$/, ["會員中心", "勳章兌換"]],
+    [/^\/member\/invite-codes$/, ["會員中心", "註冊邀請碼"]],
+    [/^\/member\/records$/, ["會員中心", "使用紀錄"]],
     [/^\/member\/ordering(\/create)?$/, ["會員中心", "建立訂單"]],
     [/^\/member\/ordering\/proposals/, ["會員中心", "成立中訂單", "店家提案階段"]],
     [/^\/member\/ordering\/voting/, ["會員中心", "成立中訂單", "投票階段"]],

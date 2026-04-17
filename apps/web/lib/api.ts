@@ -128,6 +128,24 @@ export type MenuItem = {
   description: string;
 };
 
+export type MerchantBuildingBadge = {
+  label: string;
+  tone: "gold" | "emerald" | "blue" | "orange";
+};
+
+export type MerchantBuilding = {
+  stage: string;
+  title: string;
+  floors: number;
+  score: number;
+  nextScore: number;
+  skin: string;
+  categoryCount: number;
+  menuItemCount: number;
+  completedOrderCount: number;
+  badges: MerchantBuildingBadge[];
+};
+
 export type Merchant = {
   id: string;
   name: string;
@@ -137,6 +155,7 @@ export type Merchant = {
   payoutAddress: string;
   averageRating?: number;
   reviewCount?: number;
+  building?: MerchantBuilding;
   delistRequestedAt?: string;
   delistedAt?: string;
   ownerMemberId?: number;
@@ -461,29 +480,42 @@ export function getApiBase() {
 
 export function getStoredToken() {
   if (typeof window === "undefined") return "";
-  const legacyToken =
+  const sessionToken = window.sessionStorage.getItem(SESSION_KEY) || "";
+  const persistedToken =
+    window.localStorage.getItem(SESSION_KEY) ||
     window.sessionStorage.getItem(LEGACY_TOKEN_KEY) ||
     window.localStorage.getItem(LEGACY_TOKEN_KEY) ||
-    window.localStorage.getItem(LEGACY_LOCAL_TOKEN_KEY);
-  if (legacyToken && !window.sessionStorage.getItem(SESSION_KEY)) {
-    window.sessionStorage.setItem(SESSION_KEY, legacyToken);
-    window.sessionStorage.removeItem(LEGACY_TOKEN_KEY);
-    window.localStorage.removeItem(LEGACY_TOKEN_KEY);
-    window.localStorage.removeItem(LEGACY_LOCAL_TOKEN_KEY);
+    window.localStorage.getItem(LEGACY_LOCAL_TOKEN_KEY) ||
+    "";
+  const token = sessionToken || persistedToken;
+
+  if (token) {
+    if (!sessionToken) {
+      window.sessionStorage.setItem(SESSION_KEY, token);
+    }
+    if (window.localStorage.getItem(SESSION_KEY) !== token) {
+      window.localStorage.setItem(SESSION_KEY, token);
+    }
   }
-  return window.sessionStorage.getItem(SESSION_KEY) || "";
+
+  window.sessionStorage.removeItem(LEGACY_TOKEN_KEY);
+  window.localStorage.removeItem(LEGACY_TOKEN_KEY);
+  window.localStorage.removeItem(LEGACY_LOCAL_TOKEN_KEY);
+  return token;
 }
 
 export function setStoredToken(token: string) {
   if (typeof window === "undefined") return;
   if (token) {
     window.sessionStorage.setItem(SESSION_KEY, token);
+    window.localStorage.setItem(SESSION_KEY, token);
     window.sessionStorage.removeItem(LEGACY_TOKEN_KEY);
     window.localStorage.removeItem(LEGACY_TOKEN_KEY);
     window.localStorage.removeItem(LEGACY_LOCAL_TOKEN_KEY);
     return;
   }
   window.sessionStorage.removeItem(SESSION_KEY);
+  window.localStorage.removeItem(SESSION_KEY);
   window.sessionStorage.removeItem(LEGACY_TOKEN_KEY);
   window.localStorage.removeItem(LEGACY_TOKEN_KEY);
   window.localStorage.removeItem(LEGACY_LOCAL_TOKEN_KEY);
@@ -616,11 +648,11 @@ export async function deleteProposal(proposalId: number) {
   });
 }
 
-export async function addProposalOption(proposalId: number, merchantId: string, useProposalTicket = false, txHash?: string) {
+export async function addProposalOption(proposalId: number, merchantId: string, useProposalTicket = false, txHash?: string, syncStartedAt?: string) {
   return apiRequest<ProposalOption>(`/proposals/${proposalId}/options`, {
     method: "POST",
     auth: true,
-    body: JSON.stringify({ merchantId, useProposalTicket, txHash })
+    body: JSON.stringify({ merchantId, useProposalTicket, txHash, syncStartedAt })
   });
 }
 
@@ -632,11 +664,11 @@ export async function quoteVote(proposalId: number, voteCount: number, useVoteTi
   });
 }
 
-export async function voteProposal(proposalId: number, optionId: number, voteCount: number, useVoteTicket = false, txHash?: string) {
+export async function voteProposal(proposalId: number, optionId: number, voteCount: number, useVoteTicket = false, txHash?: string, syncStartedAt?: string) {
   return apiRequest<Proposal>(`/proposals/${proposalId}/votes`, {
     method: "POST",
     auth: true,
-    body: JSON.stringify({ optionId, voteCount, useVoteTicket, txHash })
+    body: JSON.stringify({ optionId, voteCount, useVoteTicket, txHash, syncStartedAt })
   });
 }
 
@@ -666,6 +698,7 @@ export async function finalizeOrder(payload: {
   items: Record<string, number>;
   signature?: OrderSignResponse["signature"];
   txHash?: string;
+  syncStartedAt?: string;
 }) {
   return apiRequest<Order>("/orders/finalize", {
     method: "POST",
@@ -939,7 +972,27 @@ function normalizeMerchant(merchant: Merchant): Merchant {
     description: merchant.description || "",
     delistRequestedAt,
     delistedAt,
+    building: normalizeMerchantBuilding(merchant.building),
     menu: Array.isArray(merchant.menu) ? merchant.menu : []
+  };
+}
+
+function normalizeMerchantBuilding(building?: MerchantBuilding): MerchantBuilding | undefined {
+  if (!building) return undefined;
+  return {
+    stage: building.stage || "",
+    title: building.title || "",
+    floors: Number(building.floors || 0),
+    score: Number(building.score || 0),
+    nextScore: Number(building.nextScore || 0),
+    skin: building.skin || "oak",
+    categoryCount: Number(building.categoryCount || 0),
+    menuItemCount: Number(building.menuItemCount || 0),
+    completedOrderCount: Number(building.completedOrderCount || 0),
+    badges: Array.isArray(building.badges) ? building.badges.map((badge) => ({
+      label: badge.label || "",
+      tone: badge.tone || "orange"
+    })) : []
   };
 }
 
